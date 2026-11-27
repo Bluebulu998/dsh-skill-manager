@@ -195,6 +195,11 @@ if (!mapped.some((ref) => ref.target === 'leaf-skill')) throw new Error('the vis
 if (mapped.some((ref) => ref.target === 'router-skill')) throw new Error('a skill must not map to itself')
 console.log('ok resolved references carry their target name')
 
+// The lazy-load cost travels as a byte count; the body itself never does.
+if (typeof leaf.bytes !== 'number' || leaf.bytes <= 0) throw new Error(`every skill needs a body size, got ${leaf.bytes}`)
+if (typeof parked.bytes !== 'number' || parked.bytes <= 0) throw new Error('archived skills carry their size too')
+console.log('ok body sizes travel with the inventory')
+
 for (const [name, value] of previousEnv) {
   if (value === undefined) delete process.env[name]
   else process.env[name] = value

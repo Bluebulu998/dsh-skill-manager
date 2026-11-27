@@ -52,6 +52,13 @@ window.__ModuleLoader__.load({
 
     // Name and description only: scanning file paths or bodies here would make
     // the box behave differently depending on where a skill happens to live.
+    function formatBytes(bytes) {
+      if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '—'
+      if (bytes < 1024) return `${bytes} B`
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    }
+
     function matchesQuery(skill, query) {
       const needle = query.trim().toLowerCase()
       if (needle.length === 0) return true
@@ -108,6 +115,13 @@ window.__ModuleLoader__.load({
       expand: '展开',
       collapse: '收起',
       pickSkill: '选择',
+      sizeHint: '这个文件的正文大小。只有被读取时才进上下文。',
+      branchCostHint: '这个分支下所有子技能的正文合计。',
+      residentCost: '常驻',
+      lazyCost: '按需',
+      charUnit: '字符',
+      residentHint: '这些技能的描述在每一轮请求里都会进上下文，构成模型的技能目录。',
+      lazyHint: '这些正文只在被读取时才进上下文，平时不占成本。',
       bulkSelected: '已选',
       bulkRunning: '更新中',
       bulkDone: '完成',
@@ -208,6 +222,13 @@ window.__ModuleLoader__.load({
       expand: 'Expand',
       collapse: 'Collapse',
       pickSkill: 'Select',
+      sizeHint: 'Body size of this file; it enters the context only when read.',
+      branchCostHint: 'Total body size across this branch.',
+      residentCost: 'Resident',
+      lazyCost: 'On demand',
+      charUnit: 'chars',
+      residentHint: 'These descriptions ride along on every request as the model skill catalog.',
+      lazyHint: 'These bodies enter the context only when read; otherwise they cost nothing.',
       bulkSelected: 'Selected',
       bulkRunning: 'Updating',
       bulkDone: 'Done',
@@ -677,6 +698,11 @@ window.__ModuleLoader__.load({
   font-size: 12px;
   line-height: 18px;
 }
+.dsc-chip-cost {
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+}
 .dsc-chip {
   display: inline-block;
   margin-right: 6px;
@@ -966,6 +992,30 @@ window.__ModuleLoader__.load({
         [data],
       )
 
+      // Two different bills. A description is paid on every request (it is the
+      // skill catalog the model reads); a body is paid only when something reads
+      // the file. Small numbers there, large numbers here — that is the whole
+      // point of routing through an entry skill.
+      const costs = React.useMemo(() => {
+        const empty = { residentChars: 0, residentCount: 0, lazyBytes: 0, lazyCount: 0 }
+        if (data === null) return empty
+        let residentChars = 0
+        let residentCount = 0
+        let lazyBytes = 0
+        let lazyCount = 0
+        for (const skill of data.skills) {
+          if (skill.modelInvocable !== false) {
+            residentChars += typeof skill.description === 'string' ? skill.description.length : 0
+            residentCount += 1
+          }
+          if (skill.role === 'leaf' || skill.role === 'middle') {
+            lazyBytes += typeof skill.bytes === 'number' ? skill.bytes : 0
+            lazyCount += 1
+          }
+        }
+        return { residentChars, residentCount, lazyBytes, lazyCount }
+      }, [data])
+
       const hierarchy = React.useMemo(() => {
         if (data === null) return { sections: [], rest: [] }
         const visible = data.skills
@@ -1116,6 +1166,12 @@ window.__ModuleLoader__.load({
               referencedBy.length > 0
                 ? h('span', { className: 'dsc-tag', title: referencedBy.join('\n') }, `${t('refLeaf')} · ${referencedBy.length}`)
                 : null,
+              typeof skill.bytes === 'number' && skill.bytes > 0
+                ? h('span', { className: 'dsc-tag dsc-tag-size', title: t('sizeHint') }, formatBytes(skill.bytes))
+                : null,
+              options.cost
+                ? h('span', { className: 'dsc-tag dsc-tag-cost', title: t('branchCostHint') }, options.cost)
+                : null,
               archived
                 ? h('span', { className: 'dsc-readonly' }, t('archiveHint'))
                 : null,
@@ -1220,6 +1276,16 @@ window.__ModuleLoader__.load({
                 h('span', { className: 'dsc-chip' }, `${t('overviewStandalone')} ${overview.standalone}`),
                 archivedSkills.length > 0
                   ? h('span', { className: 'dsc-chip dsc-chip-muted' }, `${t('overviewArchived')} ${archivedSkills.length}`)
+                  : null,
+                h('span', {
+                  className: 'dsc-chip dsc-chip-cost',
+                  title: t('residentHint'),
+                }, `${t('residentCost')} ${costs.residentChars.toLocaleString()} ${t('charUnit')} · ${costs.residentCount}`),
+                costs.lazyBytes > 0
+                  ? h('span', {
+                    className: 'dsc-chip dsc-chip-cost',
+                    title: t('lazyHint'),
+                  }, `${t('lazyCost')} ${formatBytes(costs.lazyBytes)} · ${costs.lazyCount}`)
                   : null,
                 h('button', {
                   type: 'button',
@@ -1364,7 +1430,11 @@ window.__ModuleLoader__.load({
                   key: router.path,
                   className: 'dsc-branch',
                 },
-                h('div', { className: 'dsc-branch-head' }, renderSkillRow(router)),
+                h('div', { className: 'dsc-branch-head' }, renderSkillRow(router, {
+                  cost: children.length > 0
+                    ? `${children.length} ${t('leafCount')} · ${formatBytes(children.reduce((sum, child) => sum + (typeof child.bytes === 'number' ? child.bytes : 0), 0))}`
+                    : undefined,
+                })),
                 children.length > 0
                   ? h('div', { className: 'dsc-branch-leaves' },
                     children.map((child) => renderSkillRow(child, { connector: '↳' })))

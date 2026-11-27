@@ -418,10 +418,12 @@ function strictInvocation(fields) {
  */
 function readSkillFile(file) {
   let text
+  let fileSize = 0
   try {
     const info = statSync(file)
     if (!info.isFile()) return { problem: '不是普通文件' }
     if (info.size > SKILL_FILE_LIMIT) return { problem: `文件超过 ${SKILL_FILE_LIMIT} 字节` }
+    fileSize = info.size
     text = readFileSync(file, 'utf8')
   } catch (error) {
     return { problem: `无法读取：${errorMessage(error)}` }
@@ -442,6 +444,9 @@ function readSkillFile(file) {
     description,
     ...(whenToUse.length > 0 ? { whenToUse } : {}),
     ...invocation,
+    // The body size is the lazy-load cost: nothing is spent until someone reads
+    // this file. It travels in the response; the body itself does not.
+    bytes: fileSize,
     // Kept for the reference scan in `discover()` and dropped there: the body is
     // never part of the inventory response.
     text,
@@ -564,6 +569,7 @@ function discover(scope) {
           .map((workspace) => workspace.title)
           .filter((title) => typeof title === 'string' && title.length > 0),
         rank: root.rank,
+        bytes: skill.bytes,
         __text: skill.text,
       })
     }
@@ -630,6 +636,7 @@ function discover(scope) {
         path: skill.file,
         source: archive.source,
         archived: true,
+        bytes: skill.bytes,
       })
     }
   }

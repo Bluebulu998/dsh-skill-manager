@@ -1,14 +1,14 @@
 window.__ModuleLoader__.load({
-  id: '@dsh-local/view-f14b8d9a-d47d-4fd4-933c-f861058ea59f',
+  id: '@dsh-local/dsh-skill-manager',
   factory(require) {
     const React = require('react')
     const h = React.createElement
 
-    const NS = 'skills.catalog'
-    const PANEL_ID = 'view-f14b8d9a-skills-catalog'
-    const CATALOG_PATH = '/api/dsh-skills-catalog/catalog'
-    const INVOCATION_PATH = '/api/dsh-skills-catalog/invocation'
-    const REVEAL_PATH = '/api/dsh-skills-catalog/reveal'
+    const NS = 'skill-manager'
+    const PANEL_ID = 'view-f14b8d9a-skill-manager'
+    const INVENTORY_PATH = '/api/dsh-skill-manager/inventory'
+    const INVOCATION_PATH = '/api/dsh-skill-manager/invocation'
+    const REVEAL_PATH = '/api/dsh-skill-manager/reveal'
 
     // Display order, not provider priority: global roots are the ones a user
     // reaches for most often, so they lead the page instead of sitting below
@@ -31,8 +31,8 @@ window.__ModuleLoader__.load({
     }
 
     const ZH = {
-      panel: '技能目录',
-      title: '技能目录',
+      panel: '技能管理',
+      title: '技能管理',
       subtitle: '按来源查看当前会被扫描到的技能。勾选会直接改写对应 SKILL.md 的 frontmatter，保存后立即生效；只列出有磁盘 SKILL.md 的本地技能。',
       refresh: '重新扫描',
       refreshing: '扫描中…',
@@ -54,10 +54,10 @@ window.__ModuleLoader__.load({
       toggleUser: '用户可调用',
       empty: '当前扫描根目录下没有技能',
       emptyHint: '在某个扫描根的顶层放置 <name>/SKILL.md 或 <name>.md 后刷新。',
-      loading: '正在读取技能目录…',
+      loading: '正在读取技能列表…',
       retry: '重试',
-      loadFailed: '读取技能目录失败',
-      refreshPending: '已保存。技能目录的刷新稍有延迟，模型将在下一次扫描后看到新状态。',
+      loadFailed: '读取技能列表失败',
+      refreshPending: '已保存。技能列表的刷新稍有延迟，模型将在下一次扫描后看到新状态。',
       skillCount: '个技能',
       rootsCount: '个根目录',
       sourceLabel: '来源',
@@ -85,8 +85,8 @@ window.__ModuleLoader__.load({
     }
 
     const EN = {
-      panel: 'Skill catalog',
-      title: 'Skill catalog',
+      panel: 'Skill manager',
+      title: 'Skill manager',
       subtitle: 'Browse the skills the local scan currently exposes, grouped by source. Ticking a box rewrites that skill’s SKILL.md frontmatter and takes effect immediately; only local skills with an on-disk SKILL.md are listed.',
       refresh: 'Rescan',
       refreshing: 'Scanning…',
@@ -108,10 +108,10 @@ window.__ModuleLoader__.load({
       toggleUser: 'User-invocable',
       empty: 'No skills in the current scan roots',
       emptyHint: 'Add <name>/SKILL.md or <name>.md at the top level of a scan root, then rescan.',
-      loading: 'Reading the skill catalog…',
+      loading: 'Reading the skill list…',
       retry: 'Retry',
-      loadFailed: 'Could not read the skill catalog',
-      refreshPending: 'Saved. The catalog refresh is slightly delayed; the model will see the new state after the next scan.',
+      loadFailed: 'Could not read the skill list',
+      refreshPending: 'Saved. The list refresh is slightly delayed; the model will see the new state after the next scan.',
       skillCount: 'skills',
       rootsCount: 'roots',
       sourceLabel: 'Source',
@@ -530,7 +530,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function CatalogPage(props) {
+    function ManagerPage(props) {
       const t = typeof props.t === 'function' ? props.t : fallbackTranslate
       const [status, setStatus] = React.useState('loading')
       const [data, setData] = React.useState(null)
@@ -555,7 +555,7 @@ window.__ModuleLoader__.load({
         if (manual) setRefreshing(true)
         else setStatus('loading')
         try {
-          const payload = await apiCall(CATALOG_PATH)
+          const payload = await apiCall(INVENTORY_PATH)
           if (!alive.current || requestId.current !== id) return
           setData(payload)
           setLoadError(null)
@@ -853,7 +853,7 @@ window.__ModuleLoader__.load({
 
         const locale = ctx.get('locale')
         if (locale && typeof locale.register === 'function') {
-          ctx.effect(() => locale.register(NS, { zh: ZH, en: EN }), 'skills-catalog: dictionaries')
+          ctx.effect(() => locale.register(NS, { zh: ZH, en: EN }), 'skill-manager: dictionaries')
         }
         const t = locale && typeof locale.bind === 'function' ? locale.bind(NS) : fallbackTranslate
 
@@ -869,7 +869,7 @@ window.__ModuleLoader__.load({
           name: 'main',
           key: PANEL_ID,
           locale: NS,
-        }, CatalogPage))
+        }, ManagerPage))
 
         // Leave the page only when this plugin's panel is the selected one.
         // The sidebar gives each row its own selected state, so the icon's last
@@ -879,7 +879,7 @@ window.__ModuleLoader__.load({
           if (!layout || typeof layout.selectPanel !== 'function') return
           if (activeRef.current !== true) return
           try { layout.selectPanel(null) } catch {}
-        }, 'skills-catalog: leave panel on unload')
+        }, 'skill-manager: leave panel on unload')
       },
     }
   },

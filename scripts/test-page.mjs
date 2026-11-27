@@ -4,7 +4,7 @@ import { URL } from 'node:url'
 
 const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
 
-const catalogPayload = {
+const inventoryPayload = {
   ok: true,
   generatedAt: '2026-01-01T00:00:00.000Z',
   workspaces: [{ id: 'w1', path: 'D:\\work', title: 'Demo workspace' }],
@@ -44,12 +44,12 @@ const calls = []
 async function fetchStub(url, init = {}) {
   const path = new URL(url).pathname
   calls.push({ path, init })
-  if (path.endsWith('/catalog')) {
-    return { ok: true, status: 200, async json() { return catalogPayload } }
+  if (path.endsWith('/inventory')) {
+    return { ok: true, status: 200, async json() { return inventoryPayload } }
   }
   if (path.endsWith('/invocation')) {
     const body = JSON.parse(init.body)
-    const skill = catalogPayload.skills.find((entry) => entry.path === body.path)
+    const skill = inventoryPayload.skills.find((entry) => entry.path === body.path)
     const invocation = {
       modelInvocable: body.modelInvocable !== undefined ? body.modelInvocable : skill.modelInvocable,
       userInvocable: body.userInvocable !== undefined ? body.userInvocable : skill.userInvocable,

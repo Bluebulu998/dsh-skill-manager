@@ -71,15 +71,15 @@ const ctx = {
 
 plugin.apply(ctx)
 
-if (localeNamespaces.length !== 1 || localeNamespaces[0].ns !== 'skills.catalog') throw new Error('locale namespace not registered')
+if (localeNamespaces.length !== 1 || localeNamespaces[0].ns !== 'skill-manager') throw new Error('locale namespace not registered')
 if (!localeNamespaces[0].locales.includes('zh') || !localeNamespaces[0].locales.includes('en')) throw new Error('locale dictionaries missing zh/en')
 
 const sidebar = registrations.find((entry) => entry.owner === 'sidebar.panellist')
 const main = registrations.find((entry) => entry.owner === 'main')
 if (!sidebar || !main) throw new Error('sidebar.panellist and main registrations are required')
-if (sidebar.registration.options.id !== 'view-f14b8d9a-skills-catalog') throw new Error('wrong sidebar id')
+if (sidebar.registration.options.id !== 'view-f14b8d9a-skill-manager') throw new Error('wrong sidebar id')
 if (sidebar.registration.options.order !== 20) throw new Error('wrong sidebar order')
-if (main.registration.options.key !== 'view-f14b8d9a-skills-catalog') throw new Error('wrong main key')
+if (main.registration.options.key !== 'view-f14b8d9a-skill-manager') throw new Error('wrong main key')
 
 const icon = sidebar.registration.component({ size: 18, active: true })
 if (!icon || icon.type !== 'svg') throw new Error('panel icon is not an svg')

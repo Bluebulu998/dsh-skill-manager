@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../index.js'
 
-const root = mkdtempSync(join(tmpdir(), 'dsh-skill-catalog-'))
+const root = mkdtempSync(join(tmpdir(), 'dsh-skill-manager-'))
 const workspace = join(root, 'workspace')
 const userHome = join(root, 'home')
 const projectSkillDir = join(workspace, '.dsh', 'skills', 'demo')
@@ -18,7 +18,7 @@ const userFile = join(userSkillDir, 'SKILL.md')
 writeFileSync(userFile, '---\nname: flat-demo\ndescription: Demo user skill\n---\nBody\n', 'utf8')
 
 // The page scans the roots itself, so no registry mock exists here: these files
-// are the only source of catalog entries.
+// are the only source of inventory entries.
 const brokenFile = join(userHome, 'skills', 'broken.md')
 writeFileSync(brokenFile, 'no frontmatter here\n', 'utf8')
 
@@ -75,17 +75,17 @@ function call(path, init) {
   return route.fetch(new Request(`http://127.0.0.1:1${path}`, init))
 }
 
-const catalogResponse = await call('/api/dsh-skills-catalog/catalog')
-const catalog = await catalogResponse.json()
-if (catalogResponse.status !== 200 || catalog.ok !== true) throw new Error(`catalog failed: ${JSON.stringify(catalog)}`)
-if (catalog.skills.length !== 2) throw new Error(`expected 2 skills, got ${catalog.skills.length}`)
-if (!catalog.roots.some((entry) => entry.source === 'project-dsh' && entry.exists)) throw new Error('missing project root')
-if (!catalog.roots.some((entry) => entry.source === 'user-dsh')) throw new Error('missing user root')
-if (!catalog.warnings.some((warning) => warning.includes('broken.md'))) throw new Error('missing warning for a malformed skill')
-if (!catalog.skills.every((skill) => typeof skill.path === 'string' && skill.path.length > 0)) throw new Error('skills must carry their file paths')
-console.log('ok catalog lists both roots and both skills')
+const inventoryResponse = await call('/api/dsh-skill-manager/inventory')
+const inventory = await inventoryResponse.json()
+if (inventoryResponse.status !== 200 || inventory.ok !== true) throw new Error(`inventory failed: ${JSON.stringify(inventory)}`)
+if (inventory.skills.length !== 2) throw new Error(`expected 2 skills, got ${inventory.skills.length}`)
+if (!inventory.roots.some((entry) => entry.source === 'project-dsh' && entry.exists)) throw new Error('missing project root')
+if (!inventory.roots.some((entry) => entry.source === 'user-dsh')) throw new Error('missing user root')
+if (!inventory.warnings.some((warning) => warning.includes('broken.md'))) throw new Error('missing warning for a malformed skill')
+if (!inventory.skills.every((skill) => typeof skill.path === 'string' && skill.path.length > 0)) throw new Error('skills must carry their file paths')
+console.log('ok inventory lists both roots and both skills')
 
-const toggleResponse = await call('/api/dsh-skills-catalog/invocation', {
+const toggleResponse = await call('/api/dsh-skill-manager/invocation', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ path: projectFile, modelInvocable: false }),
@@ -99,7 +99,7 @@ if (!written.endsWith('---\nBody\n')) throw new Error('body changed')
 if (events.length === 0) throw new Error('no fs/observed invalidation emitted')
 console.log('ok invocation rewrite writes only the key and emits invalidation')
 
-const restoreResponse = await call('/api/dsh-skills-catalog/invocation', {
+const restoreResponse = await call('/api/dsh-skill-manager/invocation', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ path: projectFile, modelInvocable: true }),
@@ -109,7 +109,7 @@ if (!restore.ok || restore.invocation.modelInvocable !== true) throw new Error('
 if (readFileSync(projectFile, 'utf8').includes('disable-model-invocation')) throw new Error('restore left the key')
 console.log('ok restoring removes the key')
 
-const unknownResponse = await call('/api/dsh-skills-catalog/invocation', {
+const unknownResponse = await call('/api/dsh-skill-manager/invocation', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ path: join(root, 'not-a-skill.md'), modelInvocable: false }),
@@ -118,7 +118,7 @@ const unknown = await unknownResponse.json()
 if (unknownResponse.status !== 404 || unknown.code !== 'skill_not_found') throw new Error(`expected skill_not_found, got ${JSON.stringify(unknown)}`)
 console.log('ok unknown paths are rejected')
 
-const revealUnknown = await call('/api/dsh-skills-catalog/reveal', {
+const revealUnknown = await call('/api/dsh-skill-manager/reveal', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ path: join(root, 'elsewhere') }),

@@ -1,5 +1,5 @@
 /**
- * Local smoke test for the catalog route: run the host half with a fake scope,
+ * Local smoke test for the inventory route: run the host half with a fake scope,
  * ask it to scan the real machine, and print what the page would render.
  *
  * It never writes files and never opens a window. Pass a workspace directory as
@@ -41,25 +41,25 @@ const scope = {
 
 apply({ ...scope, inject(_dependencies, callback) { callback(scope) } })
 
-const route = routes.get('/api/dsh-skills-catalog/catalog')
-if (!route) throw new Error('catalog route was not registered')
+const route = routes.get('/api/dsh-skill-manager/inventory')
+if (!route) throw new Error('inventory route was not registered')
 
-const response = await route.fetch(new Request('http://127.0.0.1/api/dsh-skills-catalog/catalog'))
-const catalog = await response.json()
+const response = await route.fetch(new Request('http://127.0.0.1/api/dsh-skill-manager/inventory'))
+const inventory = await response.json()
 
 console.log(`workspace: ${workspace}`)
 console.log(`status:    ${response.status}`)
 console.log('roots:')
-for (const root of catalog.roots) {
+for (const root of inventory.roots) {
   console.log(`  [${root.exists && root.isDirectory ? 'ok' : '--'}] ${root.source.padEnd(15)} ${root.path}`)
 }
 console.log('skills:')
-for (const skill of catalog.skills) {
+for (const skill of inventory.skills) {
   const flags = `model=${skill.modelInvocable} user=${skill.userInvocable}${skill.shadowed ? ' shadowed' : ''}`
   console.log(`  ${skill.name.padEnd(28)} ${skill.source.padEnd(15)} ${flags}`)
 }
-if (catalog.warnings.length > 0) {
+if (inventory.warnings.length > 0) {
   console.log('warnings:')
-  for (const warning of catalog.warnings) console.log(`  - ${warning}`)
+  for (const warning of inventory.warnings) console.log(`  - ${warning}`)
 }
-console.log(`total: ${catalog.skills.length} skills, ${catalog.roots.length} roots`)
+console.log(`total: ${inventory.skills.length} skills, ${inventory.roots.length} roots`)

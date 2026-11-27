@@ -8,7 +8,7 @@ const manifestPath = join(root, 'package.json')
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
 
 const problems = []
-if (manifest.name !== '@dsh-local/view-f14b8d9a-d47d-4fd4-933c-f861058ea59f') {
+if (manifest.name !== '@dsh-local/dsh-skill-manager') {
   problems.push(`unexpected package name: ${manifest.name}`)
 }
 if (manifest.dsh?.bundle?.patch !== './cordis.patch.yml') {

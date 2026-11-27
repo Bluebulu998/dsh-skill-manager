@@ -1,9 +1,9 @@
 {
-  "name": "@dsh-local/view-f14b8d9a-d47d-4fd4-933c-f861058ea59f",
-  "version": "1.0.0",
+  "name": "@dsh-local/dsh-skill-manager",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "Cross-session skill catalog page: lists filesystem-scanned skills by source, toggles SKILL.md invocation frontmatter, and shows scan roots.",
+  "description": "Cross-session skill manager page: lists filesystem-scanned skills by source, toggles SKILL.md invocation frontmatter, and shows scan roots.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

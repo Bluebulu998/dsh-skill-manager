@@ -1,8 +1,8 @@
 /**
- * Host half of the cross-session skill catalog.
+ * Host half of the cross-session skill manager.
  *
  * It serves three authenticated `/api` routes for the browser page:
- * - GET  catalog: the filesystem-scanned skills (with their invocation flags)
+ * - GET  inventory: the filesystem-scanned skills (with their invocation flags)
  *   grouped by scan source, plus the scan roots themselves;
  * - POST invocation: rewrite one skill's `SKILL.md` frontmatter so the
  *   filesystem skill provider rescans it immediately;
@@ -10,9 +10,9 @@
  *
  * The page edits only what the local filesystem provider already scans. It
  * never registers skills, changes configuration, or writes outside a root the
- * catalog currently reports.
+ * current scan reports.
  *
- * @module @dsh-local/view-f14b8d9a-d47d-4fd4-933c-f861058ea59f
+ * @module @dsh-local/dsh-skill-manager
  */
 
 import { spawn } from 'node:child_process'
@@ -22,14 +22,14 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** Stable plugin name used by Cordis diagnostics. */
-export const name = 'skills-catalog'
+export const name = 'skill-manager'
 
 /** No hard service dependency: every service is optional and checked. */
 export const inject = []
 
-const CATALOG_PATH = '/api/dsh-skills-catalog/catalog'
-const INVOCATION_PATH = '/api/dsh-skills-catalog/invocation'
-const REVEAL_PATH = '/api/dsh-skills-catalog/reveal'
+const INVENTORY_PATH = '/api/dsh-skill-manager/inventory'
+const INVOCATION_PATH = '/api/dsh-skill-manager/invocation'
+const REVEAL_PATH = '/api/dsh-skill-manager/reveal'
 
 const MAX_BODY_BYTES = 64 * 1024
 const REVEAL_SPAWN_TIMEOUT_MS = 1500
@@ -137,7 +137,7 @@ function providerConfigs(scope) {
       }
     }
   } catch (error) {
-    scope.logger?.warn?.(`skills-catalog: cannot read skill provider config: ${errorMessage(error)}`)
+    scope.logger?.warn?.(`skill-manager: cannot read skill provider config: ${errorMessage(error)}`)
   }
   if (configs.length === 0) configs.push({})
 
@@ -205,7 +205,7 @@ function listWorkspaces(scope) {
       title: typeof workspace.title === 'string' ? workspace.title : '',
     })).filter((workspace) => workspace.path.length > 0)
   } catch (error) {
-    scope.logger?.warn?.(`skills-catalog: cannot list workspaces: ${errorMessage(error)}`)
+    scope.logger?.warn?.(`skill-manager: cannot list workspaces: ${errorMessage(error)}`)
     return []
   }
 }
@@ -279,7 +279,7 @@ function rootOfSkillPath(skillPath) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Catalog read                                                                */
+/* Inventory read                                                             */
 /* -------------------------------------------------------------------------- */
 
 const KEBAB_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -319,7 +319,7 @@ function foldBlock(lines, folded) {
 }
 
 /**
- * Read the top-level frontmatter keys the catalog needs. Nested maps are left
+ * Read the top-level frontmatter keys the inventory needs. Nested maps are left
  * unread on purpose: the provider validates only these fields, and a nested
  * map must not be mistaken for a scalar.
  */
@@ -458,7 +458,7 @@ function scanRoot(root, warnings) {
  * layered: the profile root mounts only the registry, while every preset mounts
  * the local provider inside its own scope, so a host-level snapshot always sees
  * zero providers. Scanning the same roots with the provider's rules gives the
- * page both the catalog and the file paths it needs to edit.
+ * page both the inventory and the file paths it needs to edit.
  */
 function discover(scope) {
   const { roots, workspaces } = collectRoots(scope)
@@ -521,7 +521,7 @@ function discover(scope) {
   return { roots, skills, warnings }
 }
 
-async function readCatalog(scope) {
+async function readInventory(scope) {
   const { roots, skills, warnings } = discover(scope)
   return {
     value: {
@@ -652,7 +652,7 @@ async function readVersion(scope, path) {
 }
 
 function atomicNodeWrite(path, text) {
-  const temp = join(dirname(path), `.${basename(path)}.dsh-catalog-${process.pid}-${Date.now()}.tmp`)
+  const temp = join(dirname(path), `.${basename(path)}.dsh-skill-manager-${process.pid}-${Date.now()}.tmp`)
   writeFileSync(temp, text, 'utf8')
   renameSync(temp, path)
 }
@@ -683,10 +683,10 @@ async function writeSkillText(scope, path, text, previousVersion, writableRoot) 
 /* Request handlers                                                            */
 /* -------------------------------------------------------------------------- */
 
-async function handleCatalog(scope) {
-  const catalog = await readCatalog(scope)
-  if (catalog.error) return catalog.error
-  return jsonResponse(200, catalog.value)
+async function handleInventory(scope) {
+  const inventory = await readInventory(scope)
+  if (inventory.error) return inventory.error
+  return jsonResponse(200, inventory.value)
 }
 
 async function readBody(request) {
@@ -730,10 +730,10 @@ async function handleInvocation(scope, request) {
   const requested = assertFlags(body.value)
   if (!requested) return failure(400, 'invalid_body', 'At least one boolean invocation flag is required.')
 
-  const catalog = await readCatalog(scope)
-  if (catalog.error) return catalog.error
+  const inventory = await readInventory(scope)
+  if (inventory.error) return inventory.error
   const key = normalizePath(body.value.path)
-  const skill = catalog.value.skills.find((entry) => normalizePath(entry.path) === key)
+  const skill = inventory.value.skills.find((entry) => normalizePath(entry.path) === key)
   if (!skill) {
     return failure(404, 'skill_not_found', 'That file is not a skill the current scan roots expose.')
   }
@@ -755,7 +755,7 @@ async function handleInvocation(scope, request) {
     return failure(500, 'read_failed', `Cannot read the skill file: ${errorMessage(error)}`)
   }
 
-  // The catalog may lag a concurrent edit, so read the file's own flags for
+  // The inventory may lag a concurrent edit, so read the file's own flags for
   // the surface the caller did not ask to change.
   const current = parseInvocation(currentText)
   const next = {
@@ -774,7 +774,7 @@ async function handleInvocation(scope, request) {
   }
 
   // Match the first-party write/edit invalidation path: the skill provider
-  // records this observation synchronously and refreshes its catalog for the
+  // records this observation synchronously and refreshes its inventory for the
   // next model step without waiting for the file watcher.
   if (outcome && typeof outcome.version === 'string') {
     try {
@@ -783,13 +783,13 @@ async function handleInvocation(scope, request) {
         scope.emit('fs/observed', target, { kind: 'present', version: outcome.version }, { name: 'edit' })
       }
     } catch (error) {
-      scope.logger?.warn?.(`skills-catalog: invalidation hint failed: ${errorMessage(error)}`)
+      scope.logger?.warn?.(`skill-manager: invalidation hint failed: ${errorMessage(error)}`)
     }
   }
 
   const actual = parseInvocation(rewritten.text)
   // The page reads files directly, so the new state is visible as soon as the
-  // write lands; the invalidation hint above covers the provider's own catalog.
+  // write lands; the invalidation hint above covers the provider's own inventory.
   return jsonResponse(200, { ok: true, invocation: actual, refreshed: verifyInvocation(skill.path, actual) })
 }
 
@@ -841,7 +841,7 @@ async function openFolder(scope, path) {
     const timer = setTimeout(() => finish({ ok: true }), REVEAL_SPAWN_TIMEOUT_MS)
     child.once('error', (error) => {
       clearTimeout(timer)
-      scope.logger?.warn?.(`skills-catalog: cannot open folder: ${errorMessage(error)}`)
+      scope.logger?.warn?.(`skill-manager: cannot open folder: ${errorMessage(error)}`)
       finish({ ok: false, code: 'reveal_failed', message: errorMessage(error) })
     })
     child.once('spawn', () => {
@@ -859,9 +859,9 @@ async function handleReveal(scope, request) {
     return failure(400, 'invalid_body', 'A folder path is required.')
   }
   const key = normalizePath(body.value.path)
-  const catalog = await readCatalog(scope)
-  if (catalog.error) return catalog.error
-  const root = catalog.value.roots.find((entry) => normalizePath(entry.path) === key)
+  const inventory = await readInventory(scope)
+  if (inventory.error) return inventory.error
+  const root = inventory.value.roots.find((entry) => normalizePath(entry.path) === key)
   if (!root) return failure(403, 'unknown_root', 'That folder is not a current skill scan root.')
   if (!root.isDirectory) return failure(404, 'missing_root', 'That scan root does not exist on this machine.')
   if (/\.asar([\\/]|$)/i.test(root.path)) {
@@ -876,7 +876,7 @@ async function handleReveal(scope, request) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Register the authenticated skill-catalog routes for the browser page.
+ * Register the authenticated skill-manager routes for the browser page.
  * @param ctx - host plugin context.
  */
 export function apply(ctx) {
@@ -884,7 +884,7 @@ export function apply(ctx) {
     const connection = scope.get('connection')
     const fetchRoutes = connection?.fetch
     if (!fetchRoutes || typeof fetchRoutes.register !== 'function') {
-      scope.logger?.warn?.('skills-catalog: the connection fetch channel is unavailable; the page cannot load.')
+      scope.logger?.warn?.('skill-manager: the connection fetch channel is unavailable; the page cannot load.')
       return
     }
     const register = fetchRoutes.register.bind(fetchRoutes)
@@ -892,30 +892,30 @@ export function apply(ctx) {
       try {
         return await handler(request)
       } catch (error) {
-        scope.logger?.warn?.(`skills-catalog: route failed: ${errorMessage(error)}`)
+        scope.logger?.warn?.(`skill-manager: route failed: ${errorMessage(error)}`)
         return failure(500, 'internal_error', errorMessage(error))
       }
     }
 
     scope.effect(() => register({
-      path: CATALOG_PATH,
+      path: INVENTORY_PATH,
       methods: ['GET'],
       requestBody: 'buffered',
-      fetch: route(async () => await handleCatalog(scope)),
-    }), 'skills-catalog: catalog route')
+      fetch: route(async () => await handleInventory(scope)),
+    }), 'skill-manager: inventory route')
 
     scope.effect(() => register({
       path: INVOCATION_PATH,
       methods: ['POST'],
       requestBody: 'buffered',
       fetch: route(async (request) => await handleInvocation(scope, request)),
-    }), 'skills-catalog: invocation route')
+    }), 'skill-manager: invocation route')
 
     scope.effect(() => register({
       path: REVEAL_PATH,
       methods: ['POST'],
       requestBody: 'buffered',
       fetch: route(async (request) => await handleReveal(scope, request)),
-    }), 'skills-catalog: reveal route')
+    }), 'skill-manager: reveal route')
   })
 }

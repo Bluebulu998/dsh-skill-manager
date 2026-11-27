@@ -28,7 +28,7 @@
 4. `pnpm-lock.yaml` 的包名键（specifier/version 记录的是路径，路径没变就不用动）；
 5. `node_modules/@dsh-local/<包名>` 符号链接。
 
-**运行中的进程有 ESM realpath 缓存**：改完链接后，重载仍可能去旧路径找文件。做法是保留旧路径直到完整重启一次；重启后再删旧链接（删前确认它是 SymbolicLink/Junction，不是真目录）。2026-11-28 的 uuid 目录 Junction 已在重启后确认删除。
+**运行中的进程有 ESM realpath 缓存**：改完链接后，重载仍可能去旧路径找文件。做法是保留旧路径直到完整重启一次；重启后再删旧链接（删前确认它是 SymbolicLink/Junction，不是真目录；删 Junction 用 `cmd /c rmdir`，不要用 `Remove-Item -Recurse`，后者可能顺着链接删到目标目录）。2026-11-28 重启后，uuid 目录 Junction 与旧包名兼容 Junction 都已删除，`node_modules/@dsh-local` 下只剩 `dsh-skill-manager` 一个链接。
 
 ## 2. 目录结构
 

@@ -9,6 +9,7 @@ window.__ModuleLoader__.load({
     const INVENTORY_PATH = '/api/dsh-skill-manager/inventory'
     const INVOCATION_PATH = '/api/dsh-skill-manager/invocation'
     const REVEAL_PATH = '/api/dsh-skill-manager/reveal'
+const SEARCH_PATH = '/api/dsh-skill-manager/search'
 
     // Display order, not provider priority: global roots are the ones a user
     // reaches for most often, so they lead the page instead of sitting below
@@ -133,6 +134,14 @@ window.__ModuleLoader__.load({
       bulkRestore: '恢复默认',
       bulkClear: '取消选择',
       searchPlaceholder: '搜索技能名或描述',
+      semanticTitle: '库外语义检索',
+      semanticNote: '不在技能目录里的技能（设计库 135 + 已停用 13）。用一句人话找，不用记名字。',
+      semanticPlaceholder: '比如「这个按钮点着没反应」「想做得高级点 别像 AI 做的」',
+      semanticAction: '检索',
+      semanticBusy: '检索中',
+      semanticEmpty: '没有匹配的技能，换个说法试试',
+      kindDesign: '设计库',
+      kindParked: '已停用',
       selectAll: '全选',
       selectNone: '清空选择',
       runtimeNote: '由插件在运行时注册的内置技能没有磁盘扫描根，不会出现在这里（例如 office、visualize 等）。',
@@ -240,6 +249,14 @@ window.__ModuleLoader__.load({
       bulkRestore: 'Restore defaults',
       bulkClear: 'Clear selection',
       searchPlaceholder: 'Search name or description',
+      semanticTitle: 'Library search',
+      semanticNote: 'Skills outside the catalog (135 design + 13 parked). Describe the problem, not the name.',
+      semanticPlaceholder: 'e.g. "this button does nothing when clicked"',
+      semanticAction: 'Search',
+      semanticBusy: 'Searching',
+      semanticEmpty: 'Nothing matched; try different wording',
+      kindDesign: 'design',
+      kindParked: 'parked',
       selectAll: 'Select all',
       selectNone: 'Clear selection',
       runtimeNote: 'Bundled skills that plugins register at runtime have no on-disk scan root, so they are not listed here (for example office or visualize).',
@@ -560,6 +577,49 @@ window.__ModuleLoader__.load({
 .dsc-tag-role { border: 0.5px solid var(--dsw-alias-border-l2); }
 .dsc-tag-role.is-router { color: var(--dsw-alias-label-primary); }
 .dsc-tag-role.is-leaf { opacity: 0.75; }
+.dsc-semantic-row { display: flex; gap: 8px; padding: 0 14px 10px; }
+.dsc-semantic-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+}
+.dsc-semantic-results {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dsc-semantic-result {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-module-platform);
+}
+.dsc-semantic-score {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  padding-top: 2px;
+}
+.dsc-semantic-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dsc-semantic-name-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.dsc-semantic-path {
+  font-size: 10px;
+  color: var(--dsw-alias-label-caption);
+  word-break: break-all;
+}
+.dsc-semantic-error { color: var(--dsw-alias-state-error-primary); padding: 0 14px 10px; }
+.dsc-semantic-empty { padding: 0 14px 10px; }
 .dsc-search {
   width: 180px;
   padding: 4px 8px;
@@ -850,6 +910,11 @@ window.__ModuleLoader__.load({
       const [bulkBusy, setBulkBusy] = React.useState(false)
       const [bulkDone, setBulkDone] = React.useState(0)
       const [bulkResult, setBulkResult] = React.useState(null)
+      // Semantic search is a separate lane from the name filter above: that one
+      // narrows rows already on screen, this one reaches skills that never appear
+      // in the catalog at all.
+      const [semanticQuery, setSemanticQuery] = React.useState('')
+      const [semanticState, setSemanticState] = React.useState({ busy: false, results: null, error: null, total: 0 })
       const alive = React.useRef(true)
       const requestId = React.useRef(0)
 
@@ -1043,6 +1108,26 @@ window.__ModuleLoader__.load({
           else next.add(name)
           return next
         })
+      }
+
+      const runSemanticSearch = async () => {
+        const query = semanticQuery.trim()
+        if (query.length === 0 || semanticState.busy) return
+        setSemanticState({ busy: true, results: null, error: null, total: 0 })
+        try {
+          const payload = await apiCall(SEARCH_PATH, {
+            method: 'POST',
+            body: JSON.stringify({ query }),
+          })
+          setSemanticState({
+            busy: false,
+            results: Array.isArray(payload.results) ? payload.results : [],
+            error: null,
+            total: typeof payload.total === 'number' ? payload.total : 0,
+          })
+        } catch (error) {
+          setSemanticState({ busy: false, results: null, error: error.code || 'error.generic', total: 0 })
+        }
       }
 
       const toggleSelected = (path) => {
@@ -1411,6 +1496,60 @@ window.__ModuleLoader__.load({
                   ),
               )
               : null,
+
+            h('section', { className: 'dsc-card dsc-semantic' },
+              h('div', { className: 'dsc-card-head' },
+                h('div', { className: 'dsc-card-head-text' },
+                  h('h2', null, t('semanticTitle')),
+                  h('span', { className: 'dsc-hint' }, t('semanticNote')),
+                ),
+                semanticState.total > 0
+                  ? h('span', { className: 'dsc-group-count' }, String(semanticState.total))
+                  : null,
+              ),
+              h('div', { className: 'dsc-semantic-row' },
+                h('input', {
+                  type: 'text',
+                  className: 'dsc-semantic-input',
+                  placeholder: t('semanticPlaceholder'),
+                  'aria-label': t('semanticPlaceholder'),
+                  value: semanticQuery,
+                  onChange: (event) => setSemanticQuery(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter') void runSemanticSearch()
+                  },
+                }),
+                h('button', {
+                  type: 'button',
+                  className: 'dsc-btn',
+                  disabled: semanticState.busy || semanticQuery.trim().length === 0,
+                  onClick: () => { void runSemanticSearch() },
+                }, semanticState.busy ? t('semanticBusy') : t('semanticAction')),
+              ),
+              semanticState.error !== null
+                ? h('p', { className: 'dsc-hint dsc-semantic-error', role: 'alert' }, errorText(t, semanticState.error))
+                : null,
+              semanticState.results !== null && semanticState.results.length === 0
+                ? h('p', { className: 'dsc-hint dsc-semantic-empty' }, t('semanticEmpty'))
+                : null,
+              semanticState.results !== null && semanticState.results.length > 0
+                ? h('ul', { className: 'dsc-semantic-results' },
+                  semanticState.results.map((row) => h('li', { key: row.path, className: 'dsc-semantic-result' },
+                    h('span', { className: 'dsc-semantic-score' }, row.score.toFixed(3)),
+                    h('div', { className: 'dsc-semantic-main' },
+                      h('div', { className: 'dsc-semantic-name-line' },
+                        h('span', { className: 'dsc-skill-name' }, row.name),
+                        h('span', { className: 'dsc-tag' }, row.kind === 'design' ? t('kindDesign') : t('kindParked')),
+                        typeof row.bytes === 'number'
+                          ? h('span', { className: 'dsc-tag dsc-tag-size' }, formatBytes(row.bytes))
+                          : null,
+                      ),
+                      h('code', { className: 'dsc-semantic-path', title: row.path }, row.path),
+                    ),
+                  )),
+                )
+                : null,
+            ),
 
             warningText !== null
               ? h('p', { className: 'dsc-hint', role: 'status' }, warningText)

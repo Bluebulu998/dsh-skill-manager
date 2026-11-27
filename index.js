@@ -31,6 +31,10 @@ export const inject = []
 const INVENTORY_PATH = '/api/dsh-skill-manager/inventory'
 const INVOCATION_PATH = '/api/dsh-skill-manager/invocation'
 const REVEAL_PATH = '/api/dsh-skill-manager/reveal'
+const SEARCH_PATH = '/api/dsh-skill-manager/search'
+// The embedding model lives in ollama and may need a cold load; the browser
+// waits, the route does not hold a lock while it does.
+const SEARCH_EMBED_TIMEOUT_MS = 120000
 
 const MAX_BODY_BYTES = 64 * 1024
 const REVEAL_SPAWN_TIMEOUT_MS = 1500
@@ -1086,6 +1090,84 @@ async function handleReveal(scope, request) {
   return result.ok ? jsonResponse(200, { ok: true }) : failure(500, result.code, result.message)
 }
 
+/**
+ * Semantic search across the libraries that never enter the model catalog.
+ *
+ * The index is a rebuildable cache produced by `scripts/skill-index.mjs`, and
+ * the vectors come from ollama, so this plugin keeps its zero-dependency
+ * promise: it reads two files and posts one request. Nothing here writes.
+ */
+async function handleSearch(scope, request) {
+  const body = await readBody(request)
+  if (body.error) return body.error
+  const query = typeof body.value.query === 'string' ? body.value.query.trim() : ''
+  if (query.length === 0) return failure(400, 'invalid_query', 'The query is empty.')
+  if (query.length > 500) return failure(400, 'invalid_query', 'The query is longer than 500 characters.')
+
+  const config = collectRoots(scope).configs[0]
+  const dataDir = join(config.dshHome, 'skill-index')
+  const metaPath = join(dataDir, 'meta.json')
+  const binPath = join(dataDir, 'emb.bin')
+  if (!existsSync(metaPath) || !existsSync(binPath)) {
+    return failure(501, 'index_missing', `No skill index at ${dataDir}. Run: node scripts/skill-index.mjs build`)
+  }
+
+  let meta
+  let flat
+  try {
+    meta = JSON.parse(readFileSync(metaPath, 'utf8'))
+    const buffer = readFileSync(binPath)
+    flat = new Float32Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / 4)
+  } catch (error) {
+    return failure(500, 'index_unreadable', `Cannot read the skill index: ${errorMessage(error)}`)
+  }
+  const dim = typeof meta.dim === 'number' ? meta.dim : 0
+  const items = Array.isArray(meta.items) ? meta.items : []
+  if (dim <= 0 || items.length === 0 || flat.length !== items.length * dim) {
+    return failure(500, 'index_corrupt', 'The skill index no longer matches its metadata. Rebuild it.')
+  }
+
+  let vector
+  try {
+    const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434'
+    const response = await fetch(`${endpoint}/api/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: meta.model, input: [query], keep_alive: '2m' }),
+      signal: AbortSignal.timeout(SEARCH_EMBED_TIMEOUT_MS),
+    })
+    if (!response.ok) throw new Error(`the embedding host answered ${response.status}`)
+    const payload = await response.json()
+    vector = payload?.embeddings?.[0]
+    if (!Array.isArray(vector) || vector.length !== dim) throw new Error('the embedding has an unexpected shape')
+  } catch (error) {
+    return failure(503, 'embed_unavailable', `Cannot reach the embedding model: ${errorMessage(error)}`)
+  }
+
+  const scored = items.map((item, index) => {
+    let dot = 0
+    let left = 0
+    let right = 0
+    for (let at = 0; at < dim; at += 1) {
+      const a = flat[index * dim + at]
+      const b = vector[at]
+      dot += a * b
+      left += a * a
+      right += b * b
+    }
+    const score = left === 0 || right === 0 ? 0 : dot / Math.sqrt(left * right)
+    return { name: item.name, description: item.description, path: item.path, kind: item.kind, bytes: item.bytes, score }
+  })
+  scored.sort((first, second) => second.score - first.score)
+  return jsonResponse(200, {
+    ok: true,
+    model: meta.model,
+    builtAt: meta.builtAt,
+    total: items.length,
+    results: scored.slice(0, 8),
+  })
+}
+
 /* -------------------------------------------------------------------------- */
 /* Plugin entry                                                                */
 /* -------------------------------------------------------------------------- */
@@ -1132,5 +1214,12 @@ export function apply(ctx) {
       requestBody: 'buffered',
       fetch: route(async (request) => await handleReveal(scope, request)),
     }), 'skill-manager: reveal route')
+
+    scope.effect(() => register({
+      path: SEARCH_PATH,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: route(async (request) => await handleSearch(scope, request)),
+    }), 'skill-manager: search route')
   })
 }

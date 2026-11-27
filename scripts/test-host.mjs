@@ -175,9 +175,29 @@ const revealUnknown = await call('/api/dsh-skill-manager/reveal', {
 if (revealUnknown.status !== 403) throw new Error(`expected 403 for a non-root folder, got ${revealUnknown.status}`)
 console.log('ok reveal rejects non-root folders')
 
+// Semantic search is a cache reader, so it must fail loudly and specifically
+// when the cache is not there yet instead of returning an empty result list.
+const emptySearch = await call('/api/dsh-skill-manager/search', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ query: '   ' }),
+})
+if (emptySearch.status !== 400) throw new Error(`an empty query must be rejected, got ${emptySearch.status}`)
+const missingIndex = await call('/api/dsh-skill-manager/search', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ query: '这个按钮点着没反应' }),
+})
+const missingPayload = await missingIndex.json()
+if (missingIndex.status !== 501 || missingPayload.code !== 'index_missing') {
+  throw new Error(`search without an index must name the gap, got ${missingIndex.status} ${JSON.stringify(missingPayload)}`)
+}
+console.log('ok semantic search refuses cleanly before an index exists')
+
 for (const [name, value] of previousEnv) {
   if (value === undefined) delete process.env[name]
   else process.env[name] = value
 }
 rmSync(root, { recursive: true, force: true })
+
 console.log('all host route checks passed')

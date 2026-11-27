@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "dsh": ">=0.2.2-rc.5"
+    "dsh": ">=0.2.2-rc.1"
   },
   "description": "Cross-session skill manager page: lists filesystem-scanned skills by source, toggles SKILL.md invocation frontmatter, and shows scan roots.",
   "license": "MIT",

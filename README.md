@@ -38,4 +38,15 @@
 npm test
 ```
 
-要求 **DSH Desktop 0.2.2-rc.5 或更新版本**（`package.json` 的 `engines.dsh` 会校验）：插件通过 `connection.fetch` 注册 `/api` 路由，并读取 `configEditor` 的当前组合，旧版本没有这些接口。页面依赖 Harness 的 Web 端连接，纯 headless 环境看不到这个入口。
+要求 **DSH Desktop 0.2.2-rc.5 或更新版本**：插件管理器会校验 `package.json` 的 `engines.dsh`，不满足时直接拒绝安装或激活（`incompatible-version`），不是警告——要用旧版本就得显式接受版本豁免，那等于自己承担崩溃风险。
+
+这个下限是**实测过的版本**，不是接口下限。插件依赖的四件事在 0.2.2-rc.1 里都已经存在：
+
+| 依赖 | rc.1 里的位置 |
+|---|---|
+| `connection.fetch.register({ path, methods, requestBody, fetch })` | `@deepseek-ai/dsh-client-connection/lib/index.js` 的 `fetchRoutes` |
+| `configEditor.configuration()` → `[{ entry, inherited, override }]` | `@deepseek-ai/dsh-config-editor/lib/index.js` |
+| `fs.writeText(target, content, expected, signal, sandboxPolicy)`（五参） | `@deepseek-ai/dsh-fs-sandbox/lib/index.js`（`dsh-fs-local` 只有四参，没有 `sandboxPolicy`） |
+| `fs/observed` 失效通知 | 同上的 sandbox 后端；`dsh-experimental-liveshare` 写完后就是这样发的 |
+
+所以旧版本上大概率能跑，但没有实测过，不作为支持承诺。页面依赖 Harness 的 Web 端连接，纯 headless 环境看不到这个入口。

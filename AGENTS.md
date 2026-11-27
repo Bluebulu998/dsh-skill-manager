@@ -14,7 +14,7 @@
   - `pnpm-lock.yaml` 里包名键一处，specifier 与 version 各记录一处路径；
   - profile 的 `dsh.profile.bundles` 末尾列了本包；
   - 本包 `cordis.patch.yml` 只插入一行宿主插件：`id: "@bluebulu998/dsh-skill-manager:host"`。
-- 运行环境：DSH Desktop（最低 0.2.2-rc.5，见 `package.json` 的 `engines.dsh`），profile `desktop`。`DSH_INSTALL_DIR` 指向安装目录里的 `@deepseek-ai/dsh`（当前在 `app.asar` 内）；Web GUI 端口每次启动都可能不同，用 `$env:DSH_WEB_URL`，别硬编码 URL。
+- 运行环境：DSH Desktop（最低 0.2.2-rc.5，见 `package.json` 的 `engines.dsh`；插件管理器对不满足的包直接 `incompatible-version` 拒绝，不是警告），profile `desktop`。这个下限是实测版本：rc.1 里 `connection.fetch.register`、`configEditor.configuration()`、五参 `fs.writeText` 和 `fs/observed` 都已存在，但没在那版上验过，别据此承诺兼容。`DSH_INSTALL_DIR` 指向安装目录里的 `@deepseek-ai/dsh`（当前在 `app.asar` 内）；Web GUI 端口每次启动都可能不同，用 `$env:DSH_WEB_URL`，别硬编码 URL。
 
 ### 改名 / 移动目录
 

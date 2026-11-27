@@ -5,7 +5,7 @@
 ## 1. 它是什么、装在哪
 
 - 一个 DSH Desktop 的本地 Bundle，提供左侧栏「技能管理」页：列出当前会被本地技能提供器扫描到的技能、来源根、两个 invocation 开关，并可直接改写对应 `SKILL.md` 的 frontmatter。
-- 包名：`@bluebulu998/dsh-skill-manager`。历史上改过两次：先由创建器给的 `@dsh-local/view-f14b8d9a-...` 改成 `@dsh-local/dsh-skill-manager`，2026-11-28 为对外分享又改成现在这个 scope；bundle 列表、插件行 id、`plugin_manager` 的 entryId 都绑定它，再改就要连 profile 安装关系一起动（见下）。
+- 包名：`@bluebulu998/dsh-skill-manager`。bundle 列表、插件行 id、`plugin_manager` 的 entryId 都绑定它；改包名/目录必须连 profile 安装关系一起动（见下）。
 - 项目目录就是本目录（文件夹名与包名的末段一致，都是 `dsh-skill-manager`），也是 profile 的安装目标：
   `C:\Users\Bluebulu998\.dsh\profiles\desktop\created-plugins\dsh-skill-manager`
 - 安装关系（不要随手移动目录，也不要只改包名）：
@@ -14,21 +14,19 @@
   - `pnpm-lock.yaml` 里包名键一处，specifier 与 version 各记录一处路径；
   - profile 的 `dsh.profile.bundles` 末尾列了本包；
   - 本包 `cordis.patch.yml` 只插入一行宿主插件：`id: "@bluebulu998/dsh-skill-manager:host"`。
-- 运行环境：DSH Desktop 0.2.2-rc.5（`DSH_INSTALL_DIR` 在 `app.asar` 内），profile `desktop`，Web GUI 的端口每次启动都可能不同，别硬编码 URL。
+- 运行环境：DSH Desktop（最低 0.2.2-rc.5，见 `package.json` 的 `engines.dsh`），profile `desktop`。`DSH_INSTALL_DIR` 指向安装目录里的 `@deepseek-ai/dsh`（当前在 `app.asar` 内）；Web GUI 端口每次启动都可能不同，用 `$env:DSH_WEB_URL`，别硬编码 URL。
 
-### 改名记录（2026-11-28）
+### 改名 / 移动目录
 
-做了三次改名：目录名从创建器的 uuid 改成 `dsh-skill-manager`，包名从 `@dsh-local/view-f14b8d9a-...` 改成 `@dsh-local/dsh-skill-manager`，2026-11-28 为对外分享再改成 `@bluebulu998/dsh-skill-manager`（版本同时提到 1.2.0）。第一次改名同一批清掉了「catalog / 目录」措辞：路由前缀 `/api/dsh-skill-manager/`、panel id `view-f14b8d9a-skill-manager`、locale 命名空间 `skill-manager`、界面文案「技能管理」。
-
-改名要同时处理五处，缺一处宿主会 ENOENT 或插件行消失：
+要同时处理五处，缺一处宿主会 ENOENT 或插件行消失：
 
 1. 目录本身；
-2. 本包 `package.json` 的 `name` 与 `cordis.patch.yml` 的插入 id/name（`scripts/build.mjs` 只校验"id 以包名为前缀"，不再硬编码包名；`client.js` 顶部的 loader `id` 与 `index.js` 的 `@module` 注释也要同步，后者仅供阅读）；
+2. 本包 `package.json` 的 `name` 与 `cordis.patch.yml` 的插入 id/name（`scripts/build.mjs` 只校验“id 以包名为前缀”；`client.js` 顶部的 loader `id` 与 `index.js` 的 `@module` 注释也要同步）；
 3. profile `package.json` 的依赖键与 `dsh.profile.bundles` 条目；
 4. `pnpm-lock.yaml` 的包名键（specifier/version 记录的是路径，路径没变就不用动）；
 5. `node_modules/@<scope>/<包名>` 符号链接。
 
-**运行中的进程有 ESM realpath 缓存**：改完链接后，重载仍可能去旧路径找文件。做法是保留旧路径直到完整重启一次；重启后再删旧链接（删前确认它是 SymbolicLink/Junction，不是真目录；删 Junction 用 `cmd /c rmdir`，不要用 `Remove-Item -Recurse`，后者可能顺着链接删到目标目录）。2026-11-28 重启后，uuid 目录 Junction 与旧包名兼容 Junction 都已删除，`node_modules/@dsh-local` 下只剩 `dsh-skill-manager` 一个链接。同一天第三次改名（`@dsh-local` → `@bluebulu998`）用 `plugin_manager` 的 `remove_bundle` + `install_bundle` 完成，profile 的依赖键、bundle 列表、lockfile、`node_modules/@bluebulu998/dsh-skill-manager` 都是安装器写的；`node_modules/@dsh-local/dsh-skill-manager` 作为旧链接保留到下次完整重启，重启后应删掉这个残留链接和空的 `@dsh-local` 目录。
+运行中的进程有 ESM realpath 缓存：改完链接后必须完整重启一次，重启前保留旧路径；之后再删旧链接。删前确认它是 SymbolicLink/Junction，不是真目录；删 Junction 用 `cmd /c rmdir`，不要用 `Remove-Item -Recurse`。旧 scope `@dsh-local` 的链接是历史残留，确认当前包正常加载后可以直接删。
 
 ## 2. 目录结构
 
@@ -37,24 +35,24 @@ package.json          包清单：exports、dsh.bundle.patch、dsh.client、测�
 cordis.patch.yml       宿主插件行（唯一一行 insert）
 index.js              宿主半：3 条 /api 路由 + 扫描 + frontmatter 改写 + 打开目录
 client.js             浏览器半：侧栏入口 + 主页面（React.createElement，无 JSX/无构建）
-locale/{zh,en}.json   包级 locale（页面文案实际写在 client.js 的字典里）
+locale/{zh,en}.json   包级 locale 元数据
 icon.svg / README.md  图标、用户文档
 scripts/build.mjs     静态检查（清单、exports、语法、locale、patch id）
 scripts/test-*.mjs    4 个测试，见 §7
 scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、不写文件
 ```
 
-`client.js` 是手写可读源码，不是打包产物；`scripts/build.mjs` 只做 `node --check` 和清单校验，没有编译步骤。
+`client.js` 是手写可读源码，不是打包产物；仓库没有编译步骤，`scripts/build.mjs` 只做静态校验。
 
 ## 3. 运行时结构
 
 宿主半（`index.js`）：
 
-- `apply(ctx)` → `ctx.inject(['connection'])` → 用 `connection.fetch.register({ path, methods, requestBody:'buffered', fetch })` 注册三条路由：
+- `apply(ctx)` 在 `ctx.inject(['connection'], ...)` 回调里用 `connection.fetch.register({ path, methods, requestBody:'buffered', fetch })` 注册三条路由：
   - `GET  /api/dsh-skill-manager/inventory`
   - `POST /api/dsh-skill-manager/invocation`
   - `POST /api/dsh-skill-manager/reveal`
-- 三道路由都走连接鉴权，所以用 curl 直接打会 401，这是预期的。
+- 三道路由都走连接鉴权；未带凭据直接请求会返回 401（已验证），这是预期行为。
 
 浏览器半（`client.js`）：
 
@@ -95,12 +93,12 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
 
 ## 5. 必须知道的坑（都是踩过的）
 
-1. **不要用 `ctx.skills.snapshot()` 取数据。** 注册表是分层的：profile 根只挂注册表，`dsh-skill-filesystem` 挂在每个 Agent 预设的作用域里；宿主级快照永远是空数组。页面因此自己扫盘。
+1. **不要用 `ctx.skills.snapshot()` 取数据。** 当前 profile 里注册表挂在 profile 根，`dsh-skill-filesystem` 挂在每个 Agent 预设的作用域里；宿主级快照看不到这些 provider。页面因此自己扫盘。
 2. **`configEditor` 只直接暴露顶层行。** 预设的技能配置在 `config.plugins` 里，之前的 bug 就是只匹配了顶层 `entry.name`。
 3. **`windowsHide: true` 会连 Explorer 文件夹窗口一起隐藏**（`SW_HIDE`），表现就是"点了没反应"。打开目录必须保持可见窗口。
 4. **Explorer 按逗号/等号拆命令行**，直接传原始路径可能打开别的东西且不报错；必须用 `pathToFileURL(..., { windows:true })` 编码，把非 ASCII 转义还原、`,`/`=` 转义。
 5. **`.asar` 里的目录打不开**：宿主返回 `422 unsupported_root`，客户端按钮直接禁用。
-6. **页面排序 ≠ 提供器优先级。** 客户端用 `SOURCE_DISPLAY`（全局在前：user-dsh、user-agents、custom、bundled，然后 project-*）；服务端仍按 provider rank 返回。两处都要改，否则根列表和技能分组顺序会不一致。
+6. **页面排序 ≠ 提供器优先级。** 客户端用 `SOURCE_DISPLAY`（全局在前：user-dsh、user-agents、custom、bundled，然后 project-*），服务端用 `SOURCE_RANKS` 按提供器 rank 返回；改顺序要同时改这两处，否则根列表和技能分组顺序会不一致。
 7. **不存在的根默认隐藏**，`missingRootCount` > 0 时才出现「显示不存在的目录 (N)」开关。
 8. **轻量 frontmatter 解析不是完整 YAML。** 锚点、把 `name` 写成嵌套结构、引号形式的键等边缘写法可能和提供器判断不同。遇到"页面不显示但模型能看到"的技能，先怀疑这里。
 9. **页面文案在两处**：`client.js` 的 `ZH`/`EN` 字典，以及 `locale/*.json` 的包元数据。改文案改前者。
@@ -115,7 +113,6 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
   3. 同样参数 `enabled: true`。
   - 两次调用都应为 `application: "applied"`；profile 的 `cordis.patch.yml` 不会留下开关残留（已确认）。
   - 浏览器半可能仍缓存旧的 `client.js`，让用户按一次 Ctrl+R 刷新窗口；宿主侧改动不需要刷新。
-- **改包名/目录/`cordis.patch.yml` 的插入 id**：必须同步 profile 的 `package.json`、`pnpm-lock.yaml`、`node_modules` 链接与 `dsh.profile.bundles`，否则插件消失；重启前保留旧链接。
 
 ## 7. 测试与自检
 
@@ -131,8 +128,8 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 & $env:DSH_NODE_EXECUTABLE "$p\scripts\build.mjs"
 ```
 
-- `test-host`：路由注册、扫描结果、写 frontmatter、未知路径拒绝、非根目录拒绝。
-- `test-frontmatter`：改写逻辑（BOM、CRLF、引号键、恢复默认）。
+- `test-host`：路由注册、扫描结果、写 frontmatter、未知技能路径 404、打开目录拒绝非根路径。
+- `test-frontmatter`：改写逻辑（CRLF、带引号的键、缺失/非法 frontmatter、恢复默认）。
 - `test-client`：槽位注册、locale、卸载时的 panel 释放。
 - `test-page`：最小 React 运行时渲染页面，覆盖全局优先排序、缺失根默认隐藏/按需展开、勾选保存、打开目录路由。
 - 想只看扫描结果不打页面：`& $env:DSH_NODE_EXECUTABLE "$p\scripts\probe-local.mjs" "D:\某个工作区"`。
@@ -144,7 +141,7 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 - 扫描根只读；增删改根要改预设，页面不提供。
 - 不解析 `metadata`、不支持把 `name`/`description` 写成非标量。
 - 打开目录只支持 Windows（代码里有 darwin/linux 分支但没有在真机验证）。
-- 有 git 仓库（2026-11-28 初始化，分支 `master`）；改前 commit，`git diff` 就是 review。仓库只收本目录，不要把 `node_modules` 或 profile 文件提交进来。
+- 有 git 仓库（2026-11-28 初始化，分支 `master`）；改前 commit，`git diff` 就是 review。仓库只收本目录，不要把 `node_modules`、`dist` 或 profile 文件提交进来。
 
 ## 9. 下一步可能的方向
 

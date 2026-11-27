@@ -1,8 +1,11 @@
 {
-  "name": "@dsh-local/dsh-skill-manager",
-  "version": "1.1.0",
+  "name": "@bluebulu998/dsh-skill-manager",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "dsh": ">=0.2.2-rc.5"
+  },
   "description": "Cross-session skill manager page: lists filesystem-scanned skills by source, toggles SKILL.md invocation frontmatter, and shows scan roots.",
   "exports": {
     ".": "./index.js",
@@ -18,10 +21,10 @@
     "cordis.patch.yml",
     "scripts/build.mjs",
     "scripts/probe-local.mjs",
+    "scripts/test-*.mjs",
     "locale/*.json",
     "icon.svg",
-    "README.md",
-    "AGENTS.md"
+    "README.md"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

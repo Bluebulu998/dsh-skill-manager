@@ -2,7 +2,7 @@
 
 左侧栏的全局入口，打开一个跨会话的技能管理页，用来集中查看和切换当前会被本地技能提供器扫描到的技能。它不只展示目录，还可以直接改写每个技能的调用开关。
 
-> 维护/开发请先读 `AGENTS.md`：架构、数据流、踩过的坑、重载与测试命令都在那里。本文只面向使用者。
+> 维护/开发请先读源码仓库里的 `AGENTS.md`：架构、数据流、踩过的坑、重载与测试命令都在那里。本文只面向使用者。
 
 - **按来源分组**：项目 `.dsh/skills`、项目 `.agents/skills`、自定义目录、用户 `~/.dsh/skills`、用户 `~/.agents/skills`、内置根。项目根按已注册的工作区逐个解析（最近的 `.git` 祖先），因此不同会话所在的仓库都能出现在同一页。
 - **数据来源**：页面直接扫描这些根目录，而不是查询全局技能注册表。技能的识别规则与本地提供器一致：顶层目录里的 `SKILL.md` 或顶层的 `*.md` 文件，frontmatter 必须有合法的 kebab-case `name`、非空 `description`，两个 invocation 字段必须是布尔写法。扫描根取自宿主当前组合里的技能提供器配置，包括预设 `dsh-agent-preset` 子行声明的自定义目录。
@@ -22,4 +22,17 @@
 
 ## 安装
 
-这是一个本地 Bundle：`package.json` 的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，后者只插入一个宿主插件行；浏览器半通过 `dsh.client` 声明为 Web 平台入口。
+这是一个本地 Bundle：`package.json` 的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，后者只插入一个宿主插件行；浏览器半通过 `dsh.client` 声明为 Web 平台入口。装好后左侧栏出现「技能管理」入口。
+
+1. **解压到长期保留的目录**。本地 Bundle 是链接安装：DSH 只记下这个目录的路径，不复制文件。之后移动或删除目录，插件会失效。
+2. 打开 DSH Desktop 的 **插件（Plugins）** → **添加插件（Add plugin）**，选择 `package.json` 所在的那个目录。
+3. 左侧栏出现「技能管理」即安装完成。页面若提示宿主半未加载，重启一次 Desktop 再打开。
+4. 卸载在插件列表里移除该 Bundle，不会删除你的目录。
+
+包内自带测试，解压后可以自检（需要本机有 Node.js 18 及以上）：
+
+```powershell
+npm test
+```
+
+要求 **DSH Desktop 0.2.2-rc.5 或更新版本**（`package.json` 的 `engines.dsh` 会校验）：插件通过 `connection.fetch` 注册 `/api` 路由，并读取 `configEditor` 的当前组合，旧版本没有这些接口。页面依赖 Harness 的 Web 端连接，纯 headless 环境看不到这个入口。

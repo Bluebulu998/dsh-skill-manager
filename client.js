@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@dsh-local/dsh-skill-manager',
+  id: '@bluebulu998/dsh-skill-manager',
   factory(require) {
     const React = require('react')
     const h = React.createElement

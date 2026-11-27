@@ -5,30 +5,30 @@
 ## 1. 它是什么、装在哪
 
 - 一个 DSH Desktop 的本地 Bundle，提供左侧栏「技能管理」页：列出当前会被本地技能提供器扫描到的技能、来源根、两个 invocation 开关，并可直接改写对应 `SKILL.md` 的 frontmatter。
-- 包名：`@dsh-local/dsh-skill-manager`。2026-11-28 由创建器给的 `@dsh-local/view-f14b8d9a-...` 改成现在这个名字；bundle 列表、插件行 id、`plugin_manager` 的 entryId 都绑定它，再改就要连 profile 安装关系一起动（见下）。
-- 项目目录就是本目录（文件夹名与包名一致，都是 `dsh-skill-manager`），也是 profile 的安装目标：
+- 包名：`@bluebulu998/dsh-skill-manager`。历史上改过两次：先由创建器给的 `@dsh-local/view-f14b8d9a-...` 改成 `@dsh-local/dsh-skill-manager`，2026-11-28 为对外分享又改成现在这个 scope；bundle 列表、插件行 id、`plugin_manager` 的 entryId 都绑定它，再改就要连 profile 安装关系一起动（见下）。
+- 项目目录就是本目录（文件夹名与包名的末段一致，都是 `dsh-skill-manager`），也是 profile 的安装目标：
   `C:\Users\Bluebulu998\.dsh\profiles\desktop\created-plugins\dsh-skill-manager`
 - 安装关系（不要随手移动目录，也不要只改包名）：
-  - profile 的 `package.json` 里有依赖 `"@dsh-local/dsh-skill-manager": "link:C:/Users/.../created-plugins/dsh-skill-manager"`；
-  - `node_modules/@dsh-local/dsh-skill-manager` 是指向 `..\..\created-plugins\dsh-skill-manager` 的符号链接；
+  - profile 的 `package.json` 里有依赖 `"@bluebulu998/dsh-skill-manager": "link:C:/Users/.../created-plugins/dsh-skill-manager"`；
+  - `node_modules/@bluebulu998/dsh-skill-manager` 是指向 `..\..\created-plugins\dsh-skill-manager` 的符号链接；
   - `pnpm-lock.yaml` 里包名键一处，specifier 与 version 各记录一处路径；
   - profile 的 `dsh.profile.bundles` 末尾列了本包；
-  - 本包 `cordis.patch.yml` 只插入一行宿主插件：`id: "@dsh-local/dsh-skill-manager:host"`。
+  - 本包 `cordis.patch.yml` 只插入一行宿主插件：`id: "@bluebulu998/dsh-skill-manager:host"`。
 - 运行环境：DSH Desktop 0.2.2-rc.5（`DSH_INSTALL_DIR` 在 `app.asar` 内），profile `desktop`，Web GUI 的端口每次启动都可能不同，别硬编码 URL。
 
 ### 改名记录（2026-11-28）
 
-做了两次改名：目录名从创建器的 uuid 改成 `dsh-skill-manager`，随后包名从 `@dsh-local/view-f14b8d9a-...` 改成 `@dsh-local/dsh-skill-manager`。同一批清掉了「catalog / 目录」措辞：路由前缀 `/api/dsh-skill-manager/`、panel id `view-f14b8d9a-skill-manager`、locale 命名空间 `skill-manager`、界面文案「技能管理」。
+做了三次改名：目录名从创建器的 uuid 改成 `dsh-skill-manager`，包名从 `@dsh-local/view-f14b8d9a-...` 改成 `@dsh-local/dsh-skill-manager`，2026-11-28 为对外分享再改成 `@bluebulu998/dsh-skill-manager`（版本同时提到 1.2.0）。第一次改名同一批清掉了「catalog / 目录」措辞：路由前缀 `/api/dsh-skill-manager/`、panel id `view-f14b8d9a-skill-manager`、locale 命名空间 `skill-manager`、界面文案「技能管理」。
 
 改名要同时处理五处，缺一处宿主会 ENOENT 或插件行消失：
 
 1. 目录本身；
-2. 本包 `package.json` 的 `name` 与 `cordis.patch.yml` 的插入 id/name；
+2. 本包 `package.json` 的 `name` 与 `cordis.patch.yml` 的插入 id/name（`scripts/build.mjs` 只校验"id 以包名为前缀"，不再硬编码包名；`client.js` 顶部的 loader `id` 与 `index.js` 的 `@module` 注释也要同步，后者仅供阅读）；
 3. profile `package.json` 的依赖键与 `dsh.profile.bundles` 条目；
 4. `pnpm-lock.yaml` 的包名键（specifier/version 记录的是路径，路径没变就不用动）；
-5. `node_modules/@dsh-local/<包名>` 符号链接。
+5. `node_modules/@<scope>/<包名>` 符号链接。
 
-**运行中的进程有 ESM realpath 缓存**：改完链接后，重载仍可能去旧路径找文件。做法是保留旧路径直到完整重启一次；重启后再删旧链接（删前确认它是 SymbolicLink/Junction，不是真目录；删 Junction 用 `cmd /c rmdir`，不要用 `Remove-Item -Recurse`，后者可能顺着链接删到目标目录）。2026-11-28 重启后，uuid 目录 Junction 与旧包名兼容 Junction 都已删除，`node_modules/@dsh-local` 下只剩 `dsh-skill-manager` 一个链接。
+**运行中的进程有 ESM realpath 缓存**：改完链接后，重载仍可能去旧路径找文件。做法是保留旧路径直到完整重启一次；重启后再删旧链接（删前确认它是 SymbolicLink/Junction，不是真目录；删 Junction 用 `cmd /c rmdir`，不要用 `Remove-Item -Recurse`，后者可能顺着链接删到目标目录）。2026-11-28 重启后，uuid 目录 Junction 与旧包名兼容 Junction 都已删除，`node_modules/@dsh-local` 下只剩 `dsh-skill-manager` 一个链接。同一天第三次改名（`@dsh-local` → `@bluebulu998`）用 `plugin_manager` 的 `remove_bundle` + `install_bundle` 完成，profile 的依赖键、bundle 列表、lockfile、`node_modules/@bluebulu998/dsh-skill-manager` 都是安装器写的；`node_modules/@dsh-local/dsh-skill-manager` 作为旧链接保留到下次完整重启，重启后应删掉这个残留链接和空的 `@dsh-local` 目录。
 
 ## 2. 目录结构
 
@@ -110,8 +110,8 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
 
 - **只改文档 / package.json scripts**：不需要重载。
 - **改了 `index.js` 或 `client.js`**：插件行 off/on 一次即可让宿主半重新导入：
-  1. `plugin_manager` `list_plugins` 确认 entryId 是 `include:@dsh-local/dsh-skill-manager:host`；
-  2. `set_plugin` `{ target: "include:@dsh-local/dsh-skill-manager:host", enabled: false }`；
+  1. `plugin_manager` `list_plugins` 确认 entryId 是 `include:@bluebulu998/dsh-skill-manager:host`；
+  2. `set_plugin` `{ target: "include:@bluebulu998/dsh-skill-manager:host", enabled: false }`；
   3. 同样参数 `enabled: true`。
   - 两次调用都应为 `application: "applied"`；profile 的 `cordis.patch.yml` 不会留下开关残留（已确认）。
   - 浏览器半可能仍缓存旧的 `client.js`，让用户按一次 Ctrl+R 刷新窗口；宿主侧改动不需要刷新。

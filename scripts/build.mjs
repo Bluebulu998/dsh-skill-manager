@@ -8,8 +8,10 @@ const manifestPath = join(root, 'package.json')
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
 
 const problems = []
-if (manifest.name !== '@dsh-local/dsh-skill-manager') {
-  problems.push(`unexpected package name: ${manifest.name}`)
+// Check the shape rather than a literal: package.json and cordis.patch.yml are
+// the only places the scope appears, so a rename must not need a code change.
+if (!/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(manifest.name ?? '')) {
+  problems.push(`package name must be a lowercase scoped name: ${manifest.name}`)
 }
 if (manifest.dsh?.bundle?.patch !== './cordis.patch.yml') {
   problems.push('dsh.bundle.patch must be ./cordis.patch.yml')

@@ -12,7 +12,7 @@
  * never registers skills, changes configuration, or writes outside a root the
  * current scan reports.
  *
- * @module @dsh-local/dsh-skill-manager
+ * @module @bluebulu998/dsh-skill-manager
  */
 
 import { spawn } from 'node:child_process'

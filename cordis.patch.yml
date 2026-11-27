@@ -1,3 +1,3 @@
 - insert:
-    - id: "@dsh-local/dsh-skill-manager:host"
-      name: "@dsh-local/dsh-skill-manager"
+    - id: "@bluebulu998/dsh-skill-manager:host"
+      name: "@bluebulu998/dsh-skill-manager"

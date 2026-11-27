@@ -37,6 +37,19 @@ window.__ModuleLoader__.load({
       return isArchivePath(path) ? 'bundled' : source
     }
 
+    // The two invocation keys are the whole policy surface, so they also define
+    // the three states a row can be in. Kept as one function: the badge and the
+    // filter must never disagree about what "disabled" means.
+    function policyStateOf(skill) {
+      if (skill.modelInvocable === false) return skill.userInvocable === false ? 'off' : 'user'
+      return 'model'
+    }
+
+    function matchesVisibility(skill, visibility) {
+      if (visibility === 'all') return true
+      return policyStateOf(skill) === visibility
+    }
+
     const ZH = {
       panel: '技能管理',
       title: '技能管理',
@@ -58,6 +71,13 @@ window.__ModuleLoader__.load({
       refRouter: '路由',
       refLeaf: '被引用',
       refBroken: '断链',
+      visibilityAll: '全部',
+      visibilityModel: '模型可见',
+      visibilityUser: '仅用户',
+      visibilityOff: '已关闭',
+      stateModel: '模型可见',
+      stateUser: '仅用户可调',
+      stateOff: '已关闭',
       runtimeNote: '由插件在运行时注册的内置技能没有磁盘扫描根，不会出现在这里（例如 office、visualize 等）。',
       columnSkill: '技能',
       modelColumn: '对模型可见',
@@ -117,6 +137,13 @@ window.__ModuleLoader__.load({
       refRouter: 'Router',
       refLeaf: 'Referenced',
       refBroken: 'Broken',
+      visibilityAll: 'All',
+      visibilityModel: 'Model-visible',
+      visibilityUser: 'User only',
+      visibilityOff: 'Disabled',
+      stateModel: 'Model-visible',
+      stateUser: 'User only',
+      stateOff: 'Disabled',
       runtimeNote: 'Bundled skills that plugins register at runtime have no on-disk scan root, so they are not listed here (for example office or visualize).',
       columnSkill: 'Skill',
       modelColumn: 'Model-visible',
@@ -374,6 +401,12 @@ window.__ModuleLoader__.load({
   color: var(--dsw-alias-state-error-primary);
   border: 0.5px solid currentColor;
 }
+.dsc-tag-state.is-off { opacity: 0.55; }
+.dsc-filters { display: flex; gap: 4px; margin-right: 4px; }
+.dsc-btn.is-active {
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-primary);
+}
 .dsc-skill-name {
   font-weight: 500;
   font-size: 13px;
@@ -583,6 +616,7 @@ window.__ModuleLoader__.load({
       const [revealPending, setRevealPending] = React.useState({})
       const [revealErrors, setRevealErrors] = React.useState({})
       const [showMissing, setShowMissing] = React.useState(false)
+      const [visibility, setVisibility] = React.useState('all')
       const alive = React.useRef(true)
       const requestId = React.useRef(0)
 
@@ -693,6 +727,7 @@ window.__ModuleLoader__.load({
         if (data === null) return []
         const map = new Map()
         for (const skill of data.skills) {
+          if (!matchesVisibility(skill, visibility)) continue
           const source = effectiveSource(skill.source || 'custom', skill.path)
           if (!map.has(source)) map.set(source, [])
           map.get(source).push(skill)
@@ -705,7 +740,7 @@ window.__ModuleLoader__.load({
             skills: skills.slice().sort((left, right) => left.name.localeCompare(right.name)),
           }))
           .sort((left, right) => left.rank - right.rank || left.source.localeCompare(right.source))
-      }, [data, t])
+      }, [data, t, visibility])
 
       const roots = React.useMemo(() => {
         if (data === null) return []
@@ -751,6 +786,16 @@ window.__ModuleLoader__.load({
                 h('p', { className: 'dsc-subtitle' }, t('subtitle')),
               ),
               h('div', { className: 'dsc-actions' },
+                h('div', { className: 'dsc-filters', role: 'group' },
+                  [['all', 'visibilityAll'], ['model', 'visibilityModel'], ['user', 'visibilityUser'], ['off', 'visibilityOff']]
+                    .map(([value, key]) => h('button', {
+                      key: value,
+                      type: 'button',
+                      className: `dsc-btn dsc-btn-quiet${visibility === value ? ' is-active' : ''}`,
+                      'aria-pressed': visibility === value,
+                      onClick: () => setVisibility(value),
+                    }, t(key))),
+                ),
                 h('button', {
                   type: 'button',
                   className: 'dsc-btn',
@@ -858,6 +903,9 @@ window.__ModuleLoader__.load({
                     h('div', { className: 'dsc-skill' },
                       h('div', { className: 'dsc-skill-title' },
                         h('span', { className: 'dsc-skill-name' }, skill.name),
+                        h('span', {
+                          className: `dsc-tag dsc-tag-state is-${policyStateOf(skill)}`,
+                        }, t(`state${policyStateOf(skill) === 'model' ? 'Model' : policyStateOf(skill) === 'user' ? 'User' : 'Off'}`)),
                         references.length > 0
                           ? h('span', { className: 'dsc-tag', title: references.map((ref) => ref.path).join('\n') }, `${t('refRouter')} · ${references.length}`)
                           : null,

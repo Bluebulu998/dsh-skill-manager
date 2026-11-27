@@ -96,6 +96,17 @@ window.__ModuleLoader__.load({
       archiveNote: '放在 skills-off 里，不被加载：模型看不见，斜杠命令也调不到。要恢复就把它移回 skills。',
       expand: '展开',
       collapse: '收起',
+      pickSkill: '选择',
+      bulkSelected: '已选',
+      bulkRunning: '更新中',
+      bulkDone: '完成',
+      bulkFailed: '失败',
+      bulkModelOn: '设为模型可见',
+      bulkModelOff: '对模型隐藏',
+      bulkUserOn: '允许用户调用',
+      bulkUserOff: '禁止用户调用',
+      bulkRestore: '恢复默认',
+      bulkClear: '取消选择',
       runtimeNote: '由插件在运行时注册的内置技能没有磁盘扫描根，不会出现在这里（例如 office、visualize 等）。',
       columnSkill: '技能',
       modelColumn: '对模型可见',
@@ -180,6 +191,17 @@ window.__ModuleLoader__.load({
       archiveNote: 'Parked in skills-off and not loaded: invisible to the model and to slash commands. Move it back to skills to restore it.',
       expand: 'Expand',
       collapse: 'Collapse',
+      pickSkill: 'Select',
+      bulkSelected: 'Selected',
+      bulkRunning: 'Updating',
+      bulkDone: 'Done',
+      bulkFailed: 'Failed',
+      bulkModelOn: 'Show to model',
+      bulkModelOff: 'Hide from model',
+      bulkUserOn: 'Allow user calls',
+      bulkUserOff: 'Disallow user calls',
+      bulkRestore: 'Restore defaults',
+      bulkClear: 'Clear selection',
       runtimeNote: 'Bundled skills that plugins register at runtime have no on-disk scan root, so they are not listed here (for example office or visualize).',
       columnSkill: 'Skill',
       modelColumn: 'Model-visible',
@@ -444,6 +466,25 @@ window.__ModuleLoader__.load({
 .dsc-tag-role { border: 0.5px solid var(--dsw-alias-border-l2); }
 .dsc-tag-role.is-router { color: var(--dsw-alias-label-primary); }
 .dsc-tag-role.is-leaf { opacity: 0.75; }
+.dsc-pick { margin: 0 4px 0 0; flex: none; }
+.dsc-bulk {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin: 8px 0;
+  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-module-platform);
+}
+.dsc-bulk-count { font-size: 12px; font-weight: 500; white-space: nowrap; }
+.dsc-bulk-result { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.dsc-bulk-errors { color: var(--dsw-alias-state-error-primary); margin-left: 6px; }
+.dsc-bulk-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
 .dsc-archive-group { opacity: 0.82; }
 .dsc-row-archived { grid-template-columns: minmax(0, 1fr); }
 .dsc-row-archived .dsc-skill-name { font-weight: 400; }
@@ -694,6 +735,12 @@ window.__ModuleLoader__.load({
       // this view exists to remove.
       const [viewMode, setViewMode] = React.useState('source')
       const [expanded, setExpanded] = React.useState(() => new Set())
+      // Bulk editing: the sweep that used to mean 62 hand-toggled checkboxes.
+      // Selection lives by path so a rescan keeps it stable.
+      const [selected, setSelected] = React.useState(() => new Set())
+      const [bulkBusy, setBulkBusy] = React.useState(false)
+      const [bulkDone, setBulkDone] = React.useState(0)
+      const [bulkResult, setBulkResult] = React.useState(null)
       const alive = React.useRef(true)
       const requestId = React.useRef(0)
 
@@ -862,6 +909,44 @@ window.__ModuleLoader__.load({
         })
       }
 
+      const toggleSelected = (path) => {
+        setSelected((current) => {
+          const next = new Set(current)
+          if (next.has(path)) next.delete(path)
+          else next.add(path)
+          return next
+        })
+      }
+
+      // One request per row, strictly serial: the writer is version-checked, and
+      // firing them in parallel just turns a clean sweep into a pile of 409s.
+      const applyBulk = async (change) => {
+        if (bulkBusy || data === null) return
+        const targets = data.skills.filter((skill) => selected.has(skill.path))
+        if (targets.length === 0) return
+        setBulkBusy(true)
+        setBulkDone(0)
+        setBulkResult(null)
+        let applied = 0
+        const failures = []
+        for (const skill of targets) {
+          try {
+            await apiCall(INVOCATION_PATH, {
+              method: 'POST',
+              body: JSON.stringify({ path: skill.path, ...change }),
+            })
+            applied += 1
+          } catch (error) {
+            failures.push(`${skill.name}: ${error.message}`)
+          }
+          setBulkDone(applied + failures.length)
+        }
+        setBulkBusy(false)
+        setBulkResult({ applied, failures })
+        setSelected(new Set())
+        await load()
+      }
+
       const roots = React.useMemo(() => {
         if (data === null) return []
         return (data.roots || []).slice().sort((left, right) => displayRank(effectiveSource(left.source, left.path)) - displayRank(effectiveSource(right.source, right.path))
@@ -911,6 +996,14 @@ window.__ModuleLoader__.load({
         const row = h('div', { className: `dsc-row${options.indent ? ' dsc-row-nested' : ''}`, role: 'row' },
           h('div', { className: 'dsc-skill' },
             h('div', { className: 'dsc-skill-title' },
+              h('input', {
+                type: 'checkbox',
+                className: 'dsc-pick',
+                checked: selected.has(skill.path),
+                disabled: archived,
+                'aria-label': `${t('pickSkill')} ${skill.name}`,
+                onChange: () => toggleSelected(skill.path),
+              }),
               expandable
                 ? h('button', {
                   type: 'button',
@@ -1031,6 +1124,61 @@ window.__ModuleLoader__.load({
                 archivedSkills.length > 0
                   ? h('span', { className: 'dsc-chip dsc-chip-muted' }, `${t('overviewArchived')} ${archivedSkills.length}`)
                   : null,
+              )
+              : null,
+
+            selected.size > 0 || bulkResult !== null
+              ? h('div', { className: 'dsc-bulk' },
+                h('span', { className: 'dsc-bulk-count' },
+                  bulkBusy
+                    ? `${t('bulkRunning')} ${bulkDone}/${selected.size}`
+                    : `${t('bulkSelected')} ${selected.size}`),
+                bulkResult !== null && !bulkBusy
+                  ? h('span', { className: 'dsc-bulk-result' },
+                    `${t('bulkDone')} ${bulkResult.applied} · ${t('bulkFailed')} ${bulkResult.failures.length}`,
+                    bulkResult.failures.length > 0
+                      ? h('span', { className: 'dsc-bulk-errors', title: bulkResult.failures.join('\n') }, bulkResult.failures[0])
+                      : null,
+                  )
+                  : null,
+                h('div', { className: 'dsc-bulk-actions' },
+                  h('button', {
+                    type: 'button',
+                    className: 'dsc-btn dsc-btn-quiet',
+                    disabled: bulkBusy,
+                    onClick: () => { void applyBulk({ modelInvocable: true }) },
+                  }, t('bulkModelOn')),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsc-btn dsc-btn-quiet',
+                    disabled: bulkBusy,
+                    onClick: () => { void applyBulk({ modelInvocable: false }) },
+                  }, t('bulkModelOff')),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsc-btn dsc-btn-quiet',
+                    disabled: bulkBusy,
+                    onClick: () => { void applyBulk({ userInvocable: true }) },
+                  }, t('bulkUserOn')),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsc-btn dsc-btn-quiet',
+                    disabled: bulkBusy,
+                    onClick: () => { void applyBulk({ userInvocable: false }) },
+                  }, t('bulkUserOff')),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsc-btn dsc-btn-quiet',
+                    disabled: bulkBusy,
+                    onClick: () => { void applyBulk({ modelInvocable: true, userInvocable: true }) },
+                  }, t('bulkRestore')),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsc-btn dsc-btn-quiet',
+                    disabled: bulkBusy,
+                    onClick: () => { setSelected(new Set()); setBulkResult(null) },
+                  }, t('bulkClear')),
+                ),
               )
               : null,
 

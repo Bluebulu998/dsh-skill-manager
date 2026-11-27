@@ -295,7 +295,10 @@ if (!quietBox) throw new Error('quiet-skill model checkbox missing')
 if (quietBox.props.checked !== false) throw new Error('model-visible checkbox should start false')
 if (typeof quietBox.props.onChange !== 'function') throw new Error('checkbox has no change handler')
 
-const archivedBoxes = checkboxes.filter((box) => box.props['aria-label'].includes('packaged-skill'))
+// The row checkbox is also an input with the skill name in its aria-label;
+// only the two invocation toggles carry the "对模型可见/用户可调用" prefix.
+const archivedBoxes = checkboxes.filter((box) => box.props['aria-label'].includes('packaged-skill')
+  && !box.props['aria-label'].startsWith('选择 '))
 if (archivedBoxes.length !== 2) throw new Error(`expected two toggles for the packaged skill, got ${archivedBoxes.length}`)
 if (archivedBoxes.some((box) => box.props.disabled !== true)) throw new Error('packaged-skill toggles must be disabled')
 
@@ -356,5 +359,35 @@ if (!textOf(archiveSection).includes('parked-skill')) throw new Error('archived 
 const archivedInputs = find(archiveSection, (node) => node.type === 'input')
 if (archivedInputs.length !== 0) throw new Error('archived skills must not offer toggles')
 console.log('ok archived skills render read-only in their own section')
+
+// Bulk editing: select two rows, one sweep, one request per row.
+const pickFor = (name) => find(tree, (node) => node.type === 'input'
+  && node.props && node.props['aria-label'] === `选择 ${name}`)[0]
+const firstPick = pickFor('quiet-skill')
+if (!firstPick) throw new Error('row checkbox for quiet-skill missing')
+firstPick.props.onChange()
+tree = await settle()
+const secondPick = pickFor('demo-skill')
+if (!secondPick) throw new Error('row checkbox for demo-skill missing')
+secondPick.props.onChange()
+tree = await settle()
+const bulkBar = find(tree, (node) => node.props && node.props.className === 'dsc-bulk')[0]
+if (!bulkBar) throw new Error('bulk bar missing after selecting rows')
+if (!textOf(bulkBar).includes('已选 2')) throw new Error(`bulk count wrong: ${textOf(bulkBar)}`)
+const hideButton = find(bulkBar, (node) => node.type === 'button'
+  && node.children.some((child) => typeof child === 'string' && child === '对模型隐藏'))[0]
+if (!hideButton) throw new Error('bulk hide button missing')
+const before = calls.filter((call) => call.path.endsWith('/invocation')).length
+hideButton.props.onClick()
+await new Promise((done) => setTimeout(done, 120))
+tree = await settle()
+const after = calls.filter((call) => call.path.endsWith('/invocation')).length
+if (after - before !== 2) throw new Error(`expected two bulk writes, got ${after - before}`)
+const bulkWrites = calls.filter((call) => call.path.endsWith('/invocation')).slice(-2).map((call) => JSON.parse(call.init.body))
+if (!bulkWrites.every((body) => body.modelInvocable === false)) throw new Error('bulk writes should all hide the skill from the model')
+if (new Set(bulkWrites.map((body) => body.path)).size !== 2) throw new Error('bulk writes must target distinct skills')
+const afterBar = find(tree, (node) => node.props && node.props.className === 'dsc-bulk')[0]
+if (!afterBar || !textOf(afterBar).includes('完成 2')) throw new Error(`bulk result missing: ${afterBar ? textOf(afterBar) : 'no bar'}`)
+console.log('ok bulk editing writes once per selected row and reports the result')
 
 console.log('all page rendering and interaction checks passed')

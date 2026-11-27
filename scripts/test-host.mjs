@@ -6,8 +6,14 @@ import { apply } from '../index.js'
 const root = mkdtempSync(join(tmpdir(), 'dsh-skill-manager-'))
 const workspace = join(root, 'workspace')
 const userHome = join(root, 'home')
+// The host derives its two user-level roots from DSH_HOME and DSH_AGENTS_HOME,
+// each falling back to the real home directory. Both are pinned to the fixture
+// below so a machine that has ~/.agents/skills (or exports DSH_AGENTS_HOME)
+// cannot change the inventory this test asserts on.
+const agentsHome = join(root, 'agents')
 const projectSkillDir = join(workspace, '.dsh', 'skills', 'demo')
 const userSkillDir = join(userHome, 'skills', 'flat-demo')
+const agentsSkillDir = join(agentsHome, 'skills', 'agent-demo')
 // A real directory whose name ends in `.asar` stands in for the packaged scan
 // root; the host only reasons about the path, so the write guard is testable
 // without an Electron archive to read from.
@@ -15,6 +21,7 @@ const archiveRoot = join(root, 'resources', 'app.asar', 'dsh', 'skills')
 const archiveSkillDir = join(archiveRoot, 'packaged-demo')
 mkdirSync(projectSkillDir, { recursive: true })
 mkdirSync(userSkillDir, { recursive: true })
+mkdirSync(agentsSkillDir, { recursive: true })
 mkdirSync(archiveSkillDir, { recursive: true })
 mkdirSync(join(workspace, '.git'), { recursive: true })
 
@@ -22,6 +29,8 @@ const projectFile = join(projectSkillDir, 'SKILL.md')
 writeFileSync(projectFile, '---\nname: demo-skill\ndescription: Demo project skill\n---\nBody\n', 'utf8')
 const userFile = join(userSkillDir, 'SKILL.md')
 writeFileSync(userFile, '---\nname: flat-demo\ndescription: Demo user skill\n---\nBody\n', 'utf8')
+const agentsFile = join(agentsSkillDir, 'SKILL.md')
+writeFileSync(agentsFile, '---\nname: agent-demo\ndescription: Demo agents skill\n---\nBody\n', 'utf8')
 const archiveFile = join(archiveSkillDir, 'SKILL.md')
 writeFileSync(archiveFile, '---\nname: packaged-demo\ndescription: Demo packaged skill\n---\nBody\n', 'utf8')
 
@@ -30,8 +39,14 @@ writeFileSync(archiveFile, '---\nname: packaged-demo\ndescription: Demo packaged
 const brokenFile = join(userHome, 'skills', 'broken.md')
 writeFileSync(brokenFile, 'no frontmatter here\n', 'utf8')
 
-const previousHome = process.env.DSH_HOME
+// Pin every environment variable the host reads while resolving scan roots, and
+// put the real values back afterwards. DSH_BUNDLED_SKILL_DIR is dropped rather
+// than pointed at the fixture: `bundled` is covered by the archive root below.
+const MANAGED_ENV = ['DSH_HOME', 'DSH_AGENTS_HOME', 'DSH_BUNDLED_SKILL_DIR']
+const previousEnv = new Map(MANAGED_ENV.map((name) => [name, process.env[name]]))
 process.env.DSH_HOME = userHome
+process.env.DSH_AGENTS_HOME = agentsHome
+delete process.env.DSH_BUNDLED_SKILL_DIR
 
 const routes = new Map()
 const events = []
@@ -95,9 +110,11 @@ function call(path, init) {
 const inventoryResponse = await call('/api/dsh-skill-manager/inventory')
 const inventory = await inventoryResponse.json()
 if (inventoryResponse.status !== 200 || inventory.ok !== true) throw new Error(`inventory failed: ${JSON.stringify(inventory)}`)
-if (inventory.skills.length !== 3) throw new Error(`expected 3 skills, got ${inventory.skills.length}`)
+if (inventory.skills.length !== 4) throw new Error(`expected 4 skills, got ${inventory.skills.length}`)
 if (!inventory.roots.some((entry) => entry.source === 'project-dsh' && entry.exists)) throw new Error('missing project root')
 if (!inventory.roots.some((entry) => entry.source === 'user-dsh')) throw new Error('missing user root')
+if (!inventory.roots.some((entry) => entry.source === 'user-agents' && entry.exists)) throw new Error('missing user-agents root')
+if (!inventory.skills.some((skill) => skill.path === agentsFile)) throw new Error('missing agents-home skill')
 if (!inventory.roots.some((entry) => entry.source === 'custom' && entry.path === archiveRoot)) throw new Error('missing archive root')
 if (!inventory.skills.some((skill) => skill.path === archiveFile)) throw new Error('missing packaged skill')
 if (!inventory.warnings.some((warning) => warning.includes('broken.md'))) throw new Error('missing warning for a malformed skill')
@@ -158,7 +175,9 @@ const revealUnknown = await call('/api/dsh-skill-manager/reveal', {
 if (revealUnknown.status !== 403) throw new Error(`expected 403 for a non-root folder, got ${revealUnknown.status}`)
 console.log('ok reveal rejects non-root folders')
 
-if (previousHome === undefined) delete process.env.DSH_HOME
-else process.env.DSH_HOME = previousHome
+for (const [name, value] of previousEnv) {
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+}
 rmSync(root, { recursive: true, force: true })
 console.log('all host route checks passed')

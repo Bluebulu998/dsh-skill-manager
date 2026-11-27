@@ -53,9 +53,18 @@ if (!insertMatch) {
 
 for (const file of ['index.js', 'client.js']) {
   try {
-    execFileSync(process.execPath, ['--check', join(root, file)], { stdio: 'pipe' })
+    // `stdio: 'inherit'` keeps the child's syntax error visible on the console
+    // and avoids piped stdio: the DSH Windows sandbox denies pipe handles, so a
+    // piped spawn fails with EPERM before `node --check` even runs.
+    execFileSync(process.execPath, ['--check', join(root, file)], { stdio: 'inherit' })
   } catch (error) {
-    problems.push(`${file} failed the syntax check: ${String(error.stderr ?? error.message)}`)
+    // A non-zero status means `--check` printed the error above; anything else
+    // is the spawn itself failing, which needs its own explanation.
+    if (typeof error?.status === 'number') {
+      problems.push(`${file} failed the syntax check (see the error printed above)`)
+    } else {
+      problems.push(`${file} could not be syntax-checked: ${String(error?.message ?? error)}`)
+    }
   }
 }
 

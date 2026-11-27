@@ -36,6 +36,7 @@
     "scripts/build.mjs",
     "scripts/probe-local.mjs",
     "scripts/skill-index.mjs",
+    "scripts/probe-search.mjs",
     "scripts/pack.mjs",
     "scripts/test-*.mjs",
     "locale/*.json",

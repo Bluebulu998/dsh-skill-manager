@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
-const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+// The slice markers below are LF; normalize so a checkout with CRLF endings
+// (git autocrlf on Windows) extracts the same helpers instead of failing.
+const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const start = source.indexOf('function splitFrontmatter')
 const end = source.indexOf('/* -------------------------------------------------------------------------- */\n/* File access')
 if (start < 0 || end < 0) throw new Error('cannot locate the frontmatter helpers')

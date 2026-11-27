@@ -55,11 +55,16 @@ try {
   // Not a git checkout: nothing to compare against.
 }
 
-for (const name of ['test-host', 'test-frontmatter', 'test-client', 'test-page']) {
-  console.log(`pack: ${name}`)
-  execFileSync(process.execPath, [join(root, 'scripts', `${name}.mjs`)], { stdio: 'inherit' })
+// The `test` script in package.json is the single list of checks, so derive it
+// here instead of repeating it: a newly added test must not be skippable by the
+// packer.
+const checkScripts = [...(manifest.scripts?.test ?? '').matchAll(/scripts\/([\w-]+)\.mjs/g)]
+  .map((match) => match[1])
+if (checkScripts.length === 0) fail('package.json has no test script to run before packing')
+for (const testName of checkScripts) {
+  console.log(`pack: ${testName}`)
+  execFileSync(process.execPath, [join(root, 'scripts', `${testName}.mjs`)], { stdio: 'inherit' })
 }
-execFileSync(process.execPath, [join(root, 'scripts', 'build.mjs')], { stdio: 'inherit' })
 
 mkdirSync(distDir, { recursive: true })
 console.log(`pack: npm pack ${manifest.name}@${manifest.version}`)

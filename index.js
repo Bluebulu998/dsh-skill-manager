@@ -16,7 +16,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -662,20 +662,72 @@ async function readSkillText(scope, path) {
   return readFileSync(path, 'utf8')
 }
 
+/**
+ * Stat-derived freshness token for the Node fallback writer. A host without the
+ * `fs` service has no provider version to compare, so `mtime:size` stands in for
+ * one and is read again immediately before the atomic rename.
+ */
+function nodeFileVersion(path) {
+  const info = statSync(path)
+  return `${info.mtimeMs}:${info.size}`
+}
+
+function nodeFileVersionSafe(path) {
+  try {
+    return nodeFileVersion(path)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Read the freshness tokens of one skill file before its content is read. Both
+ * are captured because the read and the write may take different paths: a
+ * provider-backed write needs the provider's opaque version, while the Node
+ * fallback can only compare the filesystem's own stat.
+ */
 async function readVersion(scope, path) {
   const { fs, target } = await resolveTarget(scope, path)
-  if (!fs || typeof fs.stat !== 'function') return { info: undefined, version: undefined }
-  const info = await fs.stat(target)
-  return { info, version: info?.version }
+  let provider
+  if (fs && typeof fs.stat === 'function') {
+    const info = await fs.stat(target)
+    provider = info?.version
+  }
+  return { provider, native: nodeFileVersionSafe(path) }
 }
 
-function atomicNodeWrite(path, text) {
+function staleVersionError(path) {
+  return Object.assign(
+    new Error(`cannot write "${path}": the file changed since it was read`),
+    { code: 'FS_STALE_VERSION' },
+  )
+}
+
+/**
+ * Write one file through a sibling temp file and an atomic rename. `expected` is
+ * the stat token captured before the content was read; a difference means
+ * another surface edited the file in between, so the rename is refused with
+ * `FS_STALE_VERSION` instead of silently overwriting that edit. The temp file
+ * never outlives a failed attempt: the scanner skips dot files, but an aborted
+ * write still should not leave litter in a user skill directory.
+ */
+function atomicNodeWrite(path, text, expected) {
   const temp = join(dirname(path), `.${basename(path)}.dsh-skill-manager-${process.pid}-${Date.now()}.tmp`)
-  writeFileSync(temp, text, 'utf8')
-  renameSync(temp, path)
+  try {
+    writeFileSync(temp, text, 'utf8')
+    if (typeof expected === 'string' && nodeFileVersionSafe(path) !== expected) throw staleVersionError(path)
+    renameSync(temp, path)
+  } catch (error) {
+    try {
+      unlinkSync(temp)
+    } catch {
+      // Nothing to remove: the rename succeeded, or the temp file was never created.
+    }
+    throw error
+  }
 }
 
-async function writeSkillText(scope, path, text, previousVersion, writableRoot) {
+async function writeSkillText(scope, path, text, versions, writableRoot) {
   const { fs, target } = await resolveTarget(scope, path)
   if (fs && typeof fs.writeText === 'function') {
     // This user action edits a file outside the agent workspace; declare the
@@ -687,14 +739,16 @@ async function writeSkillText(scope, path, text, previousVersion, writableRoot) 
     const outcome = await fs.writeText(
       target,
       text,
-      previousVersion ? { kind: 'replaceIfVersion', version: previousVersion } : undefined,
+      versions?.provider ? { kind: 'replaceIfVersion', version: versions.provider } : undefined,
       undefined,
       sandboxPolicy,
     )
     return outcome
   }
-  atomicNodeWrite(path, text)
-  return undefined
+  atomicNodeWrite(path, text, versions?.native)
+  // Report the version the caller can observe afterwards, so the invalidation
+  // hint below fires on the fallback path too.
+  return { operation: 'update', version: nodeFileVersionSafe(path) }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -763,11 +817,13 @@ async function handleInvocation(scope, request) {
     return failure(403, 'read_only_source', 'This skill lives inside the installation archive and cannot be edited.')
   }
 
-  let previousVersion
+  let versions
   try {
-    previousVersion = (await readVersion(scope, skill.path)).version
+    versions = await readVersion(scope, skill.path)
   } catch {
-    previousVersion = undefined
+    // A file that cannot be versioned is still written unconditionally; the
+    // content read below reports a real failure first.
+    versions = undefined
   }
 
   let currentText
@@ -789,7 +845,7 @@ async function handleInvocation(scope, request) {
   if (rewritten.code) return failure(422, rewritten.code, rewritten.message)
   let outcome
   try {
-    outcome = await writeSkillText(scope, skill.path, rewritten.text, previousVersion, rootOfSkillPath(skill.path))
+    outcome = await writeSkillText(scope, skill.path, rewritten.text, versions, rootOfSkillPath(skill.path))
   } catch (error) {
     const code = typeof error?.code === 'string' ? error.code : 'write_failed'
     return failure(code === 'FS_STALE_VERSION' ? 409 : 500, code === 'FS_STALE_VERSION' ? 'stale_file' : 'write_failed', `Cannot write the skill file: ${errorMessage(error)}`)
@@ -798,12 +854,15 @@ async function handleInvocation(scope, request) {
   // Match the first-party write/edit invalidation path: the skill provider
   // records this observation synchronously and refreshes its inventory for the
   // next model step without waiting for the file watcher.
-  if (outcome && typeof outcome.version === 'string') {
+  const writtenVersion = outcome && typeof outcome.version === 'string' ? outcome.version : undefined
+  if (writtenVersion !== undefined) {
     try {
       const { target } = await resolveTarget(scope, skill.path)
-      if (target) {
-        scope.emit('fs/observed', target, { kind: 'present', version: outcome.version }, { name: 'edit' })
-      }
+      // A host without an `fs` service has no provider target to hand over, and
+      // the listeners only key off the display path, so a local stand-in records
+      // the same invalidation there.
+      const observed = target ?? { targetKey: skill.path, displayPath: skill.path }
+      scope.emit('fs/observed', observed, { kind: 'present', version: writtenVersion }, { name: 'edit' })
     } catch (error) {
       scope.logger?.warn?.(`skill-manager: invalidation hint failed: ${errorMessage(error)}`)
     }

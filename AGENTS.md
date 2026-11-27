@@ -39,7 +39,7 @@ locale/{zh,en}.json   包级 locale 元数据
 icon.svg / README.md  图标、用户文档
 scripts/build.mjs     静态检查（清单、exports、语法、locale、patch id）
 scripts/pack.mjs      出包：跑测试 + `npm pack` + 校验归档内容（见 §6）
-scripts/test-*.mjs    4 个测试，见 §7
+scripts/test-*.mjs    5 个测试，见 §7
 scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、不写文件
 ```
 
@@ -89,7 +89,7 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
    - `disable-model-invocation` / `user-invocable` 只接受 `true/false/yes/no/on/off/1/0`，其它值整条丢弃（与提供器一样，不是"默认允许"）；
    - 失败的条目不会静默消失，会进 `warnings`（页面上只显示一条通用横幅，文案是 `warnRefresh`）。
 4. **合并**：按 `normalizePath(path)` 去重并合并 workspaces；同名冲突按根 rank 标 `shadowed`（页面不渲染这个字段，只在 warnings 里提示）。
-5. **写**：`POST /invocation` 只改两个键，保留 BOM/CRLF/注释/正文；路径落在 `.asar` 内时直接 403 `read_only_source`（按路径判断，不按 source）；`fs.writeText` 走版本保护（`replaceIfVersion`），冲突返回 `409 stale_file`；写后发 `fs/observed`（`{kind:'present', version}`，name `edit`）让提供器同步失效；最后读回文件确认，`refreshed` 反映真实结果（不再轮询注册表）。
+5. **写**：`POST /invocation` 只改两个键，保留 BOM/CRLF/注释/正文；路径落在 `.asar` 内时直接 403 `read_only_source`（按路径判断，不按 source）；读内容前同时抓两个版本令牌——提供器的 `fs.stat().version`（给 `fs.writeText` 的 `replaceIfVersion` 用）和 Node 的 `mtime:size`（给没有 `fs` 服务时的回退写用，在 `renameSync` 前再比一次）；任一不一致都返回 `409 stale_file`，不会静默覆盖另一个窗口的改动。回退写用同目录的 `.SKILL.md.dsh-skill-manager-<pid>-<ts>.tmp` 加原子改名，失败时无条件删临时文件。写完发 `fs/observed`（`{kind:'present', version}`，name `edit`）让提供器同步失效，两条写路径都会发：没有 `fs` 服务时用 `{displayPath, targetKey}` 的路径替身，因为监听方只读 `displayPath`。最后读回文件确认，`refreshed` 反映真实结果（不再轮询注册表）。
 6. **打开目录**：`POST /reveal` 校验路径确实是当前根 → `openFolder()`。
 
 ## 5. 必须知道的坑（都是踩过的）
@@ -131,12 +131,14 @@ npm run pack -- --force   # 同版本覆盖，只在包还没发出去时用
 
 ## 7. 测试与自检
 
-Desktop 安装里 PATH 上不一定有 `node`，用运行时自带的 Electron 当 Node：
+Desktop 安装里 PATH 上不一定有 `node`，可以用运行时自带的 Electron 当 Node（本机 PATH 有 `node` 时直接 `npm test` 最省事）：
 
 ```powershell
 $p = 'C:\Users\Bluebulu998\.dsh\profiles\desktop\created-plugins\dsh-skill-manager'
 $env:ELECTRON_RUN_AS_NODE = '1'
+$env:ELECTRON_NO_ASAR = '1'   # 必须：asar 的 fs 包装层会把 test-host 里含 .asar 的 mkdir 拦成 ENOTDIR
 & $env:DSH_NODE_EXECUTABLE "$p\scripts\test-host.mjs"
+& $env:DSH_NODE_EXECUTABLE "$p\scripts\test-fallback.mjs"
 & $env:DSH_NODE_EXECUTABLE "$p\scripts\test-frontmatter.mjs"
 & $env:DSH_NODE_EXECUTABLE "$p\scripts\test-client.mjs"
 & $env:DSH_NODE_EXECUTABLE "$p\scripts\test-page.mjs"
@@ -144,10 +146,13 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 ```
 
 - `test-host`：路由注册、扫描结果（含 asar 自定义根）、写 frontmatter、asar 路径 403、未知技能路径 404、打开目录拒绝非根路径。
+- `test-fallback`：没有 `fs` 服务时的 Node 回退写——写入成功且发 `fs/observed`（带技能路径）、并发改动返回 `409 stale_file` 且不覆盖、失败/成功都不留 `.tmp`。
 - `test-frontmatter`：改写逻辑（CRLF、带引号的键、缺失/非法 frontmatter、恢复默认）。
 - `test-client`：槽位注册、locale、卸载时的 panel 释放。
 - `test-page`：最小 React 运行时渲染页面，覆盖全局优先排序、缺失根默认隐藏/按需展开、asar 根按「内置」分组且开关禁用、勾选保存、打开目录路由。
 - 想只看扫描结果不打页面：`& $env:DSH_NODE_EXECUTABLE "$p\scripts\probe-local.mjs" "D:\某个工作区"`。
+
+注意：`test-frontmatter` 按 LF 标记从 `index.js` 里切函数，脚本已把源文本的 `\r\n` 规范化；改 `index.js` 的分节横幅（`/* File access ... */`）会同时破掉它的定位，改完跑一遍 `npm test`。
 
 ## 8. 已知限制与未做的事
 

@@ -1,6 +1,6 @@
 {
   "name": "@bluebulu998/dsh-skill-manager",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node scripts/test-host.mjs && node scripts/test-frontmatter.mjs && node scripts/test-client.mjs && node scripts/test-page.mjs && node scripts/build.mjs",
+    "test": "node scripts/test-host.mjs && node scripts/test-fallback.mjs && node scripts/test-frontmatter.mjs && node scripts/test-client.mjs && node scripts/test-page.mjs && node scripts/build.mjs",
     "pack": "node scripts/pack.mjs",
     "probe": "node scripts/probe-local.mjs"
   },

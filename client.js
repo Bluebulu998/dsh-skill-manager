@@ -483,34 +483,47 @@ window.__ModuleLoader__.load({
 .dsc-tree { display: flex; flex-direction: column; gap: 10px; }
 .dsc-tree-hint { margin: 0 0 2px; }
 .dsc-branch {
-  border: 0.5px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   overflow: hidden;
 }
-.dsc-branch-head { background: var(--dsw-alias-bg-module-platform); }
-.dsc-branch-leaves { border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.dsc-branch-head {
+  background: var(--dsw-alias-bg-module-platform);
+  border-left: 3px solid var(--dsw-alias-label-primary);
+}
+.dsc-branch-head .dsc-skill-name { font-weight: 600; }
+.dsc-branch-leaves {
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 40%, transparent);
+}
 .dsc-branch-leaves .dsc-row {
   position: relative;
-  padding-left: 26px;
+  padding-left: 42px;
 }
 .dsc-branch-leaves .dsc-row::before {
   content: '';
   position: absolute;
-  left: 12px;
+  left: 20px;
   top: 0;
   bottom: 0;
-  border-left: 1px solid var(--dsw-alias-border-l2);
+  border-left: 1px solid var(--dsw-alias-label-tertiary);
 }
 .dsc-branch-leaves .dsc-row:last-child::before { bottom: 50%; }
 .dsc-branch-leaves .dsc-row:last-child::after {
   content: '';
   position: absolute;
-  left: 12px;
+  left: 20px;
   top: 50%;
-  width: 9px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  width: 12px;
+  border-top: 1px solid var(--dsw-alias-label-tertiary);
 }
-.dsc-branch-empty { padding: 6px 0 6px 26px; margin: 0; }
+.dsc-connector {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  margin-right: 2px;
+  flex: none;
+}
+.dsc-branch-empty { padding: 6px 0 6px 42px; margin: 0; }
 .dsc-branch-plain-head {
   background: transparent;
   display: flex;
@@ -1069,6 +1082,9 @@ window.__ModuleLoader__.load({
         const row = h('div', { className: `dsc-row${options.indent ? ' dsc-row-nested' : ''}`, role: 'row' },
           h('div', { className: 'dsc-skill' },
             h('div', { className: 'dsc-skill-title' },
+              options.connector
+                ? h('span', { className: 'dsc-connector', 'aria-hidden': 'true' }, options.connector)
+                : null,
               h('input', {
                 type: 'checkbox',
                 className: 'dsc-pick',
@@ -1351,7 +1367,7 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'dsc-branch-head' }, renderSkillRow(router)),
                 children.length > 0
                   ? h('div', { className: 'dsc-branch-leaves' },
-                    children.map((child) => renderSkillRow(child)))
+                    children.map((child) => renderSkillRow(child, { connector: '↳' })))
                   : h('p', { className: 'dsc-hint dsc-branch-empty' }, t('branchNoLeaves')),
                 )),
                 hierarchy.rest.length > 0

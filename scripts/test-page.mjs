@@ -327,8 +327,8 @@ if (!text.includes('策略概览')) throw new Error('overview strip missing')
 const overviewStrip = find(tree, (node) => node.props && node.props.className === 'dsc-overview')[0]
 if (!overviewStrip) throw new Error('overview element missing')
 const overviewText = textOf(overviewStrip)
-if (!overviewText.includes('路由 1')) throw new Error(`overview should count the router: ${overviewText}`)
-if (!overviewText.includes('叶子 1')) throw new Error(`overview should count the leaf: ${overviewText}`)
+if (!overviewText.includes('入口 1')) throw new Error(`overview should count the entry skill: ${overviewText}`)
+if (!overviewText.includes('子技能 1')) throw new Error(`overview should count the sub-skill: ${overviewText}`)
 if (!overviewText.includes('已归档 1')) throw new Error(`overview should count archived skills: ${overviewText}`)
 console.log('ok overview counts roles and archived skills')
 

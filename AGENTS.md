@@ -156,7 +156,7 @@ $env:ELECTRON_NO_ASAR = '1'   # 必须：asar 的 fs 包装层会把 test-host �
 
 - `test-host`：路由注册、扫描结果（含 asar 自定义根）、写 frontmatter、asar 路径 403、未知技能路径 404、打开目录拒绝非根路径。
 - `test-fallback`：没有 `fs` 服务时的 Node 回退写——写入成功且发 `fs/observed`（带技能路径）、并发改动返回 `409 stale_file` 且不覆盖、失败/成功都不留 `.tmp`。
-- `test-references`：引用图——路由技能的每条引用带 `path`/`exists`（asar 内的带 `archive`）、disabled 正文不算证据、`referencedBy` 跨可见性反向索引、断链汇总成一条 warning 且 asar 引用不计入、响应里不带正文。
+- `test-references`：引用图——入口技能的每条引用带 `path`/`exists`（asar 内的带 `archive`）、disabled 正文不算证据、`referencedBy` 跨可见性反向索引、断链汇总成一条 warning 且 asar 引用不计入、响应里不带正文。
 - `test-frontmatter`：改写逻辑（CRLF、带引号的键、缺失/非法 frontmatter、恢复默认）。
 - `test-client`：槽位注册、locale、卸载时的 panel 释放。
 - `test-page`：最小 React 运行时渲染页面，覆盖全局优先排序、缺失根默认隐藏/按需展开、asar 根按「内置」分组且开关禁用、勾选保存、打开目录路由。

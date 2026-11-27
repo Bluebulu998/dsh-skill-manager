@@ -153,7 +153,7 @@ console.log('ok a disabled body is not evidence')
 
 const broken = rows.filter((row) => !row.exists && row.archive !== true)
 if (broken.length < 2) throw new Error(`expected at least the missing + home-form rows to be broken, got ${broken.length}`)
-if (!inventory.warnings.some((warning) => warning.includes('路由引用'))) {
+if (!inventory.warnings.some((warning) => warning.includes('处引用'))) {
   throw new Error(`expected a broken-link warning, got ${JSON.stringify(inventory.warnings)}`)
 }
 const archiveWarned = inventory.warnings.filter((warning) => warning.includes('app.asar'))

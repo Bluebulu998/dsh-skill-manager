@@ -599,7 +599,7 @@ function discover(scope) {
   const brokenLinks = skills.reduce((total, skill) => total
     + skill.references.filter((ref) => !ref.exists && !ref.archive).length, 0)
   if (brokenLinks > 0) {
-    warnings.push(`${brokenLinks} 处路由引用指向不存在的技能文件，读过去会失败。`)
+    warnings.push(`${brokenLinks} 处引用指向不存在的技能文件，读过去会失败。`)
   }
   // The reference graph is only useful if it can be read as a hierarchy: map
   // each resolved target back to an inventory entry, then derive one role per

@@ -30,6 +30,13 @@ window.__ModuleLoader__.load({
       return typeof path === 'string' && /\.asar([\\/]|$)/i.test(path)
     }
 
+    // The shipped preset mounts its packaged skills as a custom directory, but
+    // a path inside the installation archive ships with the app: show it as
+    // Bundled so the page does not present it as a user-owned custom root.
+    function effectiveSource(source, path) {
+      return isArchivePath(path) ? 'bundled' : source
+    }
+
     const ZH = {
       panel: '技能管理',
       title: '技能管理',
@@ -47,6 +54,8 @@ window.__ModuleLoader__.load({
       openFolder: '打开文件夹',
       opening: '打开中…',
       editHint: '勾选即改写文件；取消勾选会移除对应的限制字段。',
+      archiveHint: '位于安装包内，只读',
+      runtimeNote: '由插件在运行时注册的内置技能没有磁盘扫描根，不会出现在这里（例如 office、visualize 等）。',
       columnSkill: '技能',
       modelColumn: '对模型可见',
       userColumn: '用户可调用',
@@ -101,6 +110,8 @@ window.__ModuleLoader__.load({
       openFolder: 'Open folder',
       opening: 'Opening…',
       editHint: 'Ticking rewrites the file; clearing removes the corresponding restriction key.',
+      archiveHint: 'Inside the install archive; read-only',
+      runtimeNote: 'Bundled skills that plugins register at runtime have no on-disk scan root, so they are not listed here (for example office or visualize).',
       columnSkill: 'Skill',
       modelColumn: 'Model-visible',
       userColumn: 'User-invocable',
@@ -332,6 +343,17 @@ window.__ModuleLoader__.load({
 .dsc-row-head span:nth-child(2),
 .dsc-row-head span:nth-child(3) { text-align: center; }
 .dsc-skill { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dsc-skill-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dsc-readonly {
+  flex: none;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-caption);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
 .dsc-skill-name {
   font-weight: 500;
   font-size: 13px;
@@ -651,7 +673,7 @@ window.__ModuleLoader__.load({
         if (data === null) return []
         const map = new Map()
         for (const skill of data.skills) {
-          const source = skill.source || 'custom'
+          const source = effectiveSource(skill.source || 'custom', skill.path)
           if (!map.has(source)) map.set(source, [])
           map.get(source).push(skill)
         }
@@ -667,7 +689,7 @@ window.__ModuleLoader__.load({
 
       const roots = React.useMemo(() => {
         if (data === null) return []
-        return (data.roots || []).slice().sort((left, right) => displayRank(left.source) - displayRank(right.source)
+        return (data.roots || []).slice().sort((left, right) => displayRank(effectiveSource(left.source, left.path)) - displayRank(effectiveSource(right.source, right.path))
           || left.rank - right.rank
           || left.path.localeCompare(right.path))
       }, [data])
@@ -754,7 +776,7 @@ window.__ModuleLoader__.load({
                       const present = root.exists && root.isDirectory
                       const archived = isArchivePath(root.path)
                       return h('li', { key: root.path, className: 'dsc-root' },
-                        h('span', { className: 'dsc-source-pill' }, sourceLabel(t, root.source)),
+                        h('span', { className: 'dsc-source-pill' }, sourceLabel(t, effectiveSource(root.source, root.path))),
                         h('div', { className: 'dsc-root-main' },
                           h('code', { className: 'dsc-path', title: root.path }, root.path),
                           root.workspaceTitle
@@ -805,39 +827,48 @@ window.__ModuleLoader__.load({
                   h('span', { role: 'columnheader' }, t('modelColumn')),
                   h('span', { role: 'columnheader' }, t('userColumn')),
                 ),
-                group.skills.map((skill) => h('div', { key: skill.path, className: 'dsc-row', role: 'row' },
-                  h('div', { className: 'dsc-skill' },
-                    h('span', { className: 'dsc-skill-name' }, skill.name),
-                    skill.description
-                      ? h('p', { className: 'dsc-skill-desc', title: skill.description }, skill.description)
+                group.skills.map((skill) => {
+                  const archived = isArchivePath(skill.path)
+                  return h('div', { key: skill.path, className: 'dsc-row', role: 'row' },
+                    h('div', { className: 'dsc-skill' },
+                      h('div', { className: 'dsc-skill-title' },
+                        h('span', { className: 'dsc-skill-name' }, skill.name),
+                        archived
+                          ? h('span', { className: 'dsc-readonly' }, t('archiveHint'))
+                          : null,
+                      ),
+                      skill.description
+                        ? h('p', { className: 'dsc-skill-desc', title: skill.description }, skill.description)
+                        : null,
+                      h('code', { className: 'dsc-skill-path', title: skill.path }, skill.path),
+                      skill.workspaceTitles && skill.workspaceTitles.length > 0
+                        ? h('span', { className: 'dsc-skill-path' }, skill.workspaceTitles.join(' · '))
+                        : null,
+                    ),
+                    h('div', { className: 'dsc-toggle' }, h(Toggle, {
+                      checked: skill.modelInvocable !== false,
+                      disabled: archived || pending[skill.path] === true,
+                      label: t('toggleModel'),
+                      name: skill.name,
+                      onChange: (checked) => { void setFlag(skill, 'modelInvocable', checked) },
+                    })),
+                    h('div', { className: 'dsc-toggle' }, h(Toggle, {
+                      checked: skill.userInvocable !== false,
+                      disabled: archived || pending[skill.path] === true,
+                      label: t('toggleUser'),
+                      name: skill.name,
+                      onChange: (checked) => { void setFlag(skill, 'userInvocable', checked) },
+                    })),
+                    rowErrors[skill.path]
+                      ? h('p', { className: 'dsc-row-detail', role: 'alert' }, rowErrors[skill.path])
                       : null,
-                    h('code', { className: 'dsc-skill-path', title: skill.path }, skill.path),
-                    skill.workspaceTitles && skill.workspaceTitles.length > 0
-                      ? h('span', { className: 'dsc-skill-path' }, skill.workspaceTitles.join(' · '))
-                      : null,
-                  ),
-                  h('div', { className: 'dsc-toggle' }, h(Toggle, {
-                    checked: skill.modelInvocable !== false,
-                    disabled: pending[skill.path] === true,
-                    label: t('toggleModel'),
-                    name: skill.name,
-                    onChange: (checked) => { void setFlag(skill, 'modelInvocable', checked) },
-                  })),
-                  h('div', { className: 'dsc-toggle' }, h(Toggle, {
-                    checked: skill.userInvocable !== false,
-                    disabled: pending[skill.path] === true,
-                    label: t('toggleUser'),
-                    name: skill.name,
-                    onChange: (checked) => { void setFlag(skill, 'userInvocable', checked) },
-                  })),
-                  rowErrors[skill.path]
-                    ? h('p', { className: 'dsc-row-detail', role: 'alert' }, rowErrors[skill.path])
-                    : null,
-                )),
+                  )
+                })
               ),
             )),
 
             h('p', { className: 'dsc-footer-hint' }, t('editHint')),
+            h('p', { className: 'dsc-footer-hint' }, t('runtimeNote')),
           ),
         ),
       )

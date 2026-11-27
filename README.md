@@ -4,7 +4,7 @@
 
 > 维护/开发请先读源码仓库里的 `AGENTS.md`：架构、数据流、踩过的坑、重载与测试命令都在那里。本文只面向使用者。
 
-- **按来源分组**：页面从上到下依次是用户 `~/.dsh/skills`、用户 `~/.agents/skills`、自定义目录、内置根，然后是项目 `.dsh/skills`、项目 `.agents/skills`。项目根按已注册的工作区逐个解析（最近的 `.git` 祖先），因此不同会话所在的仓库都能出现在同一页。
+- **按来源分组**：页面从上到下依次是用户 `~/.dsh/skills`、用户 `~/.agents/skills`、自定义目录、内置（安装包内的扫描根），然后是项目 `.dsh/skills`、项目 `.agents/skills`。项目根按已注册的工作区逐个解析（最近的 `.git` 祖先），因此不同会话所在的仓库都能出现在同一页。
 - **数据来源**：页面直接扫描这些根目录，而不是查询全局技能注册表。技能的识别规则与本地提供器一致：顶层目录里的 `SKILL.md` 或顶层的 `*.md` 文件，frontmatter 必须有合法的 kebab-case `name`、非空 `description`，两个 invocation 字段如果出现，必须是可识别的布尔写法（`true/false/yes/no/on/off/1/0`）。扫描根取自宿主当前组合里的技能提供器配置，包括预设 `dsh-agent-preset` 子行声明的自定义目录。
 - **两个可见性开关**：取消「对模型可见」会写入 `disable-model-invocation: true`，取消「用户可调用」会写入 `user-invocable: false`；重新勾选会移除对应字段，恢复默认允许。只改动 `SKILL.md` frontmatter 中的这两个顶级键，其余 frontmatter、注释和正文保持不变。
 - **立即生效**：写入后向 `fs/observed` 发送与内建 `edit`/`write` 工具相同的变更观察，技能提供器会同步失效并重新扫描；写入完成后直接读回该文件确认两个字段已是目标状态。
@@ -14,9 +14,9 @@
 
 ## 限制
 
-- 只显示本地文件系统里的技能；插件用 `ctx.skills.register()` 注册、没有 `SKILL.md` 的运行时技能不会出现，也不计入统计。
+- 只显示本地文件系统里的技能：页面只认识本地技能提供器的扫描根。插件用 `ctx.skills.register()` / `registerProvider()` 注册的运行时技能不会出现，也不计入统计——包括随安装包分发的 office、visualize、official-plugins、personalized-pages 等内置技能，它们没有扫描根。
 - 同名的技能如果被更高优先级扫描根覆盖，会带 `shadowed` 标记，页面提示里说明改动不影响模型看到的版本；文件层没有可写的 dedupe 信息，所以不会隐藏这些行。
-- 内置安装归档（`app.asar`）里的技能只读展示，勾选会被拒绝。
+- 内置安装归档（`app.asar`）里的扫描根按「内置」分组展示：行上标「位于安装包内，只读」，两个开关禁用；即使绕过页面直接调用接口，服务端也会以 `read_only_source` 拒绝改写。本机这个根是预设声明的 `dsh-agent-preset/skills`（当前只有 `dsh-doc`），它本身在提供器里算自定义目录，页面按安装包位置把它显示为内置。
 - 只编辑 `disable-model-invocation` 与 `user-invocable` 两个字段，不支持编辑技能正文、名称或描述。
 - 页面通过宿主 `/api` 路由读取数据，因此需要 Harness 的 Web 端连接；宿主半未加载时页面会显示错误并可重试。
 

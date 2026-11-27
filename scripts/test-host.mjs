@@ -8,14 +8,22 @@ const workspace = join(root, 'workspace')
 const userHome = join(root, 'home')
 const projectSkillDir = join(workspace, '.dsh', 'skills', 'demo')
 const userSkillDir = join(userHome, 'skills', 'flat-demo')
+// A real directory whose name ends in `.asar` stands in for the packaged scan
+// root; the host only reasons about the path, so the write guard is testable
+// without an Electron archive to read from.
+const archiveRoot = join(root, 'resources', 'app.asar', 'dsh', 'skills')
+const archiveSkillDir = join(archiveRoot, 'packaged-demo')
 mkdirSync(projectSkillDir, { recursive: true })
 mkdirSync(userSkillDir, { recursive: true })
+mkdirSync(archiveSkillDir, { recursive: true })
 mkdirSync(join(workspace, '.git'), { recursive: true })
 
 const projectFile = join(projectSkillDir, 'SKILL.md')
 writeFileSync(projectFile, '---\nname: demo-skill\ndescription: Demo project skill\n---\nBody\n', 'utf8')
 const userFile = join(userSkillDir, 'SKILL.md')
 writeFileSync(userFile, '---\nname: flat-demo\ndescription: Demo user skill\n---\nBody\n', 'utf8')
+const archiveFile = join(archiveSkillDir, 'SKILL.md')
+writeFileSync(archiveFile, '---\nname: packaged-demo\ndescription: Demo packaged skill\n---\nBody\n', 'utf8')
 
 // The page scans the roots itself, so no registry mock exists here: these files
 // are the only source of inventory entries.
@@ -58,6 +66,15 @@ const scope = {
       }
     }
     if (name === 'workspaceRegistry') return { list: () => [{ id: 'w', path: workspace, title: 'Workspace' }] }
+    if (name === 'configEditor') {
+      return {
+        configuration: () => [{
+          entry: { name: '@deepseek-ai/dsh-skill-filesystem', config: {} },
+          inherited: { includeDefaultRoots: true, customSkillDirs: [archiveRoot] },
+          override: {},
+        }],
+      }
+    }
     if (name === 'fs') return fakeFs
     return undefined
   },
@@ -78,12 +95,14 @@ function call(path, init) {
 const inventoryResponse = await call('/api/dsh-skill-manager/inventory')
 const inventory = await inventoryResponse.json()
 if (inventoryResponse.status !== 200 || inventory.ok !== true) throw new Error(`inventory failed: ${JSON.stringify(inventory)}`)
-if (inventory.skills.length !== 2) throw new Error(`expected 2 skills, got ${inventory.skills.length}`)
+if (inventory.skills.length !== 3) throw new Error(`expected 3 skills, got ${inventory.skills.length}`)
 if (!inventory.roots.some((entry) => entry.source === 'project-dsh' && entry.exists)) throw new Error('missing project root')
 if (!inventory.roots.some((entry) => entry.source === 'user-dsh')) throw new Error('missing user root')
+if (!inventory.roots.some((entry) => entry.source === 'custom' && entry.path === archiveRoot)) throw new Error('missing archive root')
+if (!inventory.skills.some((skill) => skill.path === archiveFile)) throw new Error('missing packaged skill')
 if (!inventory.warnings.some((warning) => warning.includes('broken.md'))) throw new Error('missing warning for a malformed skill')
 if (!inventory.skills.every((skill) => typeof skill.path === 'string' && skill.path.length > 0)) throw new Error('skills must carry their file paths')
-console.log('ok inventory lists both roots and both skills')
+console.log('ok inventory lists all roots and skills')
 
 const toggleResponse = await call('/api/dsh-skill-manager/invocation', {
   method: 'POST',
@@ -108,6 +127,19 @@ const restore = await restoreResponse.json()
 if (!restore.ok || restore.invocation.modelInvocable !== true) throw new Error('restore failed')
 if (readFileSync(projectFile, 'utf8').includes('disable-model-invocation')) throw new Error('restore left the key')
 console.log('ok restoring removes the key')
+
+const archiveOriginal = readFileSync(archiveFile, 'utf8')
+const archiveResponse = await call('/api/dsh-skill-manager/invocation', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ path: archiveFile, modelInvocable: false }),
+})
+const archiveResult = await archiveResponse.json()
+if (archiveResponse.status !== 403 || archiveResult.code !== 'read_only_source') {
+  throw new Error(`archive skill write should be rejected, got ${archiveResponse.status} ${JSON.stringify(archiveResult)}`)
+}
+if (readFileSync(archiveFile, 'utf8') !== archiveOriginal) throw new Error('archive skill file was modified')
+console.log('ok skills inside an .asar path are rejected as read-only')
 
 const unknownResponse = await call('/api/dsh-skill-manager/invocation', {
   method: 'POST',

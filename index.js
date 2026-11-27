@@ -17,6 +17,7 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -89,6 +90,11 @@ function statDirectory(path) {
   } catch {
     return { exists: false, isDirectory: false }
   }
+}
+
+/** True for a path that points inside an Electron `app.asar` archive. */
+function isArchivePath(value) {
+  return typeof value === 'string' && /\.asar([\\/]|$)/i.test(value)
 }
 
 function nearestProjectRoot(start) {
@@ -183,16 +189,28 @@ function providerConfigs(scope) {
 /**
  * The installed preset points at the skill directory that ships beside its own
  * manifest; this is the concrete root behind a computed `customSkillDirs` entry.
+ * Resolution goes through the package graph first, so the fallback keeps working
+ * if the install layout stops being `<install>/dsh/node_modules/...`.
  */
 function packagedPresetSkillsDir() {
   const anchor = process.env.DSH_INSTALL_DIR
   if (typeof anchor !== 'string' || anchor.length === 0) return undefined
-  const candidate = join(anchor, '..', '..', '..', 'node_modules', '@deepseek-ai', 'dsh-agent-preset', 'skills')
+  const candidates = []
   try {
-    return statSync(candidate).isDirectory() ? resolve(candidate) : undefined
+    const anchorRequire = createRequire(join(anchor, 'package.json'))
+    candidates.push(join(dirname(anchorRequire.resolve('@deepseek-ai/dsh-agent-preset/package.json')), 'skills'))
   } catch {
-    return undefined
+    // The package graph may be unavailable (a stripped install); fall back below.
   }
+  candidates.push(join(anchor, '..', '..', '..', 'node_modules', '@deepseek-ai', 'dsh-agent-preset', 'skills'))
+  for (const candidate of candidates) {
+    try {
+      if (statSync(candidate).isDirectory()) return resolve(candidate)
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined
 }
 
 function listWorkspaces(scope) {
@@ -737,8 +755,12 @@ async function handleInvocation(scope, request) {
   if (!skill) {
     return failure(404, 'skill_not_found', 'That file is not a skill the current scan roots expose.')
   }
-  if (skill.source === 'bundled' && skill.path.includes('app.asar')) {
-    return failure(403, 'read_only_source', 'This bundled skill is installed read-only and cannot be edited.')
+  // Anything inside the installation archive is read-only for the app, no
+  // matter which scan source reported it: the preset's packaged skills arrive
+  // as `custom`, so a source-name check alone would let the write through and
+  // fail deeper with a filesystem error.
+  if (isArchivePath(skill.path)) {
+    return failure(403, 'read_only_source', 'This skill lives inside the installation archive and cannot be edited.')
   }
 
   let previousVersion
@@ -864,7 +886,7 @@ async function handleReveal(scope, request) {
   const root = inventory.value.roots.find((entry) => normalizePath(entry.path) === key)
   if (!root) return failure(403, 'unknown_root', 'That folder is not a current skill scan root.')
   if (!root.isDirectory) return failure(404, 'missing_root', 'That scan root does not exist on this machine.')
-  if (/\.asar([\\/]|$)/i.test(root.path)) {
+  if (isArchivePath(root.path)) {
     return failure(422, 'unsupported_root', 'A directory inside the installation archive cannot be opened in the file manager.')
   }
   const result = await openFolder(scope, root.path)

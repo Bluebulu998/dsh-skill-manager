@@ -88,7 +88,7 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
    - `disable-model-invocation` / `user-invocable` 只接受 `true/false/yes/no/on/off/1/0`，其它值整条丢弃（与提供器一样，不是"默认允许"）；
    - 失败的条目不会静默消失，会进 `warnings`（页面上只显示一条通用横幅，文案是 `warnRefresh`）。
 4. **合并**：按 `normalizePath(path)` 去重并合并 workspaces；同名冲突按根 rank 标 `shadowed`（页面不渲染这个字段，只在 warnings 里提示）。
-5. **写**：`POST /invocation` 只改两个键，保留 BOM/CRLF/注释/正文；`fs.writeText` 走版本保护（`replaceIfVersion`），冲突返回 `409 stale_file`；写后发 `fs/observed`（`{kind:'present', version}`，name `edit`）让提供器同步失效；最后读回文件确认，`refreshed` 反映真实结果（不再轮询注册表）。
+5. **写**：`POST /invocation` 只改两个键，保留 BOM/CRLF/注释/正文；路径落在 `.asar` 内时直接 403 `read_only_source`（按路径判断，不按 source）；`fs.writeText` 走版本保护（`replaceIfVersion`），冲突返回 `409 stale_file`；写后发 `fs/observed`（`{kind:'present', version}`，name `edit`）让提供器同步失效；最后读回文件确认，`refreshed` 反映真实结果（不再轮询注册表）。
 6. **打开目录**：`POST /reveal` 校验路径确实是当前根 → `openFolder()`。
 
 ## 5. 必须知道的坑（都是踩过的）
@@ -103,6 +103,8 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
 8. **轻量 frontmatter 解析不是完整 YAML。** 锚点、把 `name` 写成嵌套结构、引号形式的键等边缘写法可能和提供器判断不同。遇到"页面不显示但模型能看到"的技能，先怀疑这里。
 9. **页面文案在两处**：`client.js` 的 `ZH`/`EN` 字典，以及 `locale/*.json` 的包元数据。改文案改前者。
 10. **别根据 GUI 端口/历史 URL 做判断**；每次启动都变。
+11. **`app.asar` 只读按路径判断，不按 `source`。** 预设把随包技能挂在 `customSkillDirs` 上，所以它们进 inventory 时 `source` 是 `custom`；只查 `source === 'bundled'` 会让点击写入落到 Electron 的只读 asar 里，最后只报 `write_failed`。`isArchivePath()` 同时用于写保护、`reveal` 和客户端显示：asar 路径在页面上按「内置」分组、开关禁用并标「位于安装包内，只读」，但 API 返回的 `source` 仍与提供器一致（`custom`）。
+12. **内置技能不等于文件系统技能。** 会话里看到的 office、visualize、official-plugins、personalized-pages 等是插件通过 `ctx.skills.registerProvider()` 注册的，没有扫描根；按设计这一页看不到它们（README「限制」里写明了）。asar 里能被扫到的只有预设 `dsh-agent-preset/skills`（当前 `dsh-doc`）。
 
 ## 6. 改完如何生效
 
@@ -128,15 +130,15 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 & $env:DSH_NODE_EXECUTABLE "$p\scripts\build.mjs"
 ```
 
-- `test-host`：路由注册、扫描结果、写 frontmatter、未知技能路径 404、打开目录拒绝非根路径。
+- `test-host`：路由注册、扫描结果（含 asar 自定义根）、写 frontmatter、asar 路径 403、未知技能路径 404、打开目录拒绝非根路径。
 - `test-frontmatter`：改写逻辑（CRLF、带引号的键、缺失/非法 frontmatter、恢复默认）。
 - `test-client`：槽位注册、locale、卸载时的 panel 释放。
-- `test-page`：最小 React 运行时渲染页面，覆盖全局优先排序、缺失根默认隐藏/按需展开、勾选保存、打开目录路由。
+- `test-page`：最小 React 运行时渲染页面，覆盖全局优先排序、缺失根默认隐藏/按需展开、asar 根按「内置」分组且开关禁用、勾选保存、打开目录路由。
 - 想只看扫描结果不打页面：`& $env:DSH_NODE_EXECUTABLE "$p\scripts\probe-local.mjs" "D:\某个工作区"`。
 
 ## 8. 已知限制与未做的事
 
-- 只显示文件系统里的技能；用 `ctx.skills.register()` 注册的运行时技能不出现。
+- 只显示文件系统里的技能；用 `ctx.skills.register()` 注册的运行时技能不出现，随包分发但由插件注册的内置技能（office、visualize 等）同样看不到。
 - 同名覆盖只标记不隐藏；`shadowed` 字段没进 UI。
 - 扫描根只读；增删改根要改预设，页面不提供。
 - 不解析 `metadata`、不支持把 `name`/`description` 写成非标量。

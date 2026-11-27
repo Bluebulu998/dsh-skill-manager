@@ -4,6 +4,11 @@ import { URL } from 'node:url'
 
 const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
 
+// Synthetic install-archive path for the fixture. It is never read from disk:
+// the page only needs an `.asar` segment to classify the root as bundled and
+// read-only, so keep it clearly fake instead of resembling a real install.
+const ARCHIVE_ROOT = 'C:\\demo-install\\resources\\app.asar\\dsh\\skills'
+
 const inventoryPayload = {
   ok: true,
   generatedAt: '2026-01-01T00:00:00.000Z',
@@ -12,6 +17,13 @@ const inventoryPayload = {
     { path: 'D:\\work\\.dsh\\skills', source: 'project-dsh', rank: 100, exists: true, isDirectory: true, workspaceTitle: 'Demo workspace' },
     { path: 'C:\\Users\\demo\\.dsh\\skills', source: 'user-dsh', rank: 400, exists: true, isDirectory: true },
     { path: 'C:\\Users\\demo\\.agents\\skills', source: 'user-agents', rank: 500, exists: false, isDirectory: false },
+    {
+      path: ARCHIVE_ROOT,
+      source: 'custom',
+      rank: 300,
+      exists: true,
+      isDirectory: true,
+    },
   ],
   skills: [
     {
@@ -32,6 +44,17 @@ const inventoryPayload = {
       source: 'user-dsh',
       provider: 'filesystem',
       modelInvocable: false,
+      userInvocable: true,
+      workspaces: [],
+      workspaceTitles: [],
+    },
+    {
+      name: 'packaged-skill',
+      description: 'A skill that ships inside the installation archive.',
+      path: `${ARCHIVE_ROOT}\\packaged-skill\\SKILL.md`,
+      source: 'custom',
+      provider: 'filesystem',
+      modelInvocable: true,
       userInvocable: true,
       workspaces: [],
       workspaceTitles: [],
@@ -211,8 +234,16 @@ if (!rootsList) throw new Error('roots list missing')
 const rootRows = Array.isArray(rootsList.children) ? rootsList.children.map(textOf) : []
 if (!rootRows[0] || !rootRows[0].includes('C:\\Users\\demo\\.dsh\\skills')) throw new Error(`global root is not first: ${rootRows[0]}`)
 const groupSections = find(tree, (node) => node.props && node.props.className === 'dsc-source-group')
-if (groupSections.length !== 2) throw new Error(`expected two source groups, got ${groupSections.length}`)
-if (!textOf(groupSections[1]).includes('demo-skill')) throw new Error('project group should follow the global group')
+if (groupSections.length !== 3) throw new Error(`expected three source groups, got ${groupSections.length}`)
+if (!textOf(groupSections[0]).includes('quiet-skill')) throw new Error('the user group should stay first')
+const projectGroup = groupSections.find((section) => textOf(section).includes('demo-skill'))
+if (!projectGroup) throw new Error('project group missing')
+if (groupSections.indexOf(projectGroup) !== 2) throw new Error('project group should follow the global and bundled groups')
+const archiveGroup = groupSections.find((section) => textOf(section).includes('packaged-skill'))
+if (!archiveGroup || !textOf(archiveGroup).includes('内置')) throw new Error('packaged skill should be grouped as bundled')
+if (!textOf(archiveGroup).includes('位于安装包内，只读')) throw new Error('packaged skill should be marked read-only')
+const archiveRootRow = rootRows.find((row) => row.includes('app.asar'))
+if (!archiveRootRow || !archiveRootRow.includes('内置')) throw new Error('archive root should be labelled bundled')
 console.log('ok page renders skills, global-first roots and source labels, missing roots hidden')
 
 // The missing-root toggle reveals the absent root on demand.
@@ -234,6 +265,10 @@ const quietBox = checkboxes.find((box) => box.props['aria-label'] === '对模型
 if (!quietBox) throw new Error('quiet-skill model checkbox missing')
 if (quietBox.props.checked !== false) throw new Error('model-visible checkbox should start false')
 if (typeof quietBox.props.onChange !== 'function') throw new Error('checkbox has no change handler')
+
+const archivedBoxes = checkboxes.filter((box) => box.props['aria-label'].includes('packaged-skill'))
+if (archivedBoxes.length !== 2) throw new Error(`expected two toggles for the packaged skill, got ${archivedBoxes.length}`)
+if (archivedBoxes.some((box) => box.props.disabled !== true)) throw new Error('packaged-skill toggles must be disabled')
 
 quietBox.props.onChange({ target: { checked: true } })
 tree = await settle()

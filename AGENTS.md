@@ -38,6 +38,7 @@ client.js             浏览器半：侧栏入口 + 主页面（React.createElem
 locale/{zh,en}.json   包级 locale 元数据
 icon.svg / README.md  图标、用户文档
 scripts/build.mjs     静态检查（清单、exports、语法、locale、patch id）
+scripts/pack.mjs      出包：跑测试 + `npm pack` + 校验归档内容（见 §6）
 scripts/test-*.mjs    4 个测试，见 §7
 scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、不写文件
 ```
@@ -115,6 +116,18 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
   3. 同样参数 `enabled: true`。
   - 两次调用都应为 `application: "applied"`；profile 的 `cordis.patch.yml` 不会留下开关残留（已确认）。
   - 浏览器半可能仍缓存旧的 `client.js`，让用户按一次 Ctrl+R 刷新窗口；宿主侧改动不需要刷新。
+
+### 出包（分享用）
+
+```powershell
+npm run pack              # 测试 + build + npm pack + 校验归档
+npm run pack -- --force   # 同版本覆盖，只在包还没发出去时用
+```
+
+- 产物是 `dist/<包名>-<version>.tgz`，`dist/` 与 `*.tgz` 已在 `.gitignore` 里。同版本 tgz 已存在时脚本直接失败：先 `npm version patch --no-git-tag-version`（工作区不干净时 `npm version` 会拒绝，先 commit）或手改 `package.json` 的 `version`。
+- 校验内容：归档里没有 `.git`、`AGENTS.md`、`node_modules`、`dist`；`exports` 的每个目标与 `dsh.bundle.patch` 都真的在包里；`index.js`/`client.js` 的相对 import 都在包里；包内 `package.json` 的 name/version 与工作区一致。
+- `files` 是白名单：新增运行时文件忘了加进去，校验会以 `declared but missing from the archive` 失败，而不是发一个到对方机器上才坏的包。
+- 工作区有未提交改动时只警告不失败；看到那条警告就说明这个 tgz 对应不了任何 commit。
 
 ## 7. 测试与自检
 

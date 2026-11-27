@@ -1,6 +1,6 @@
 {
   "name": "@bluebulu998/dsh-skill-manager",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -21,6 +21,7 @@
     "cordis.patch.yml",
     "scripts/build.mjs",
     "scripts/probe-local.mjs",
+    "scripts/pack.mjs",
     "scripts/test-*.mjs",
     "locale/*.json",
     "icon.svg",
@@ -29,6 +30,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node scripts/test-host.mjs && node scripts/test-frontmatter.mjs && node scripts/test-client.mjs && node scripts/test-page.mjs && node scripts/build.mjs",
+    "pack": "node scripts/pack.mjs",
     "probe": "node scripts/probe-local.mjs"
   },
   "dsh": {

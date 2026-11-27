@@ -7,7 +7,7 @@
 - 一个 DSH Desktop 的本地 Bundle，提供左侧栏「技能管理」页：列出当前会被本地技能提供器扫描到的技能、来源根、两个 invocation 开关，并可直接改写对应 `SKILL.md` 的 frontmatter。
 - 包名：`@bluebulu998/dsh-skill-manager`。bundle 列表、插件行 id、`plugin_manager` 的 entryId 都绑定它；改包名/目录必须连 profile 安装关系一起动（见下）。
 - 项目目录就是本目录（文件夹名与包名的末段一致，都是 `dsh-skill-manager`），也是 profile 的安装目标：
-  `C:\Users\Bluebulu998\.dsh\profiles\desktop\created-plugins\dsh-skill-manager`
+  `%USERPROFILE%\.dsh\profiles\desktop\created-plugins\dsh-skill-manager`
 - 安装关系（不要随手移动目录，也不要只改包名）：
   - profile 的 `package.json` 里有依赖 `"@bluebulu998/dsh-skill-manager": "link:C:/Users/.../created-plugins/dsh-skill-manager"`；
   - `node_modules/@bluebulu998/dsh-skill-manager` 是指向 `..\..\created-plugins\dsh-skill-manager` 的符号链接；
@@ -134,7 +134,7 @@ npm run pack -- --force   # 同版本覆盖，只在包还没发出去时用
 Desktop 安装里 PATH 上不一定有 `node`，可以用运行时自带的 Electron 当 Node（本机 PATH 有 `node` 时直接 `npm test` 最省事）：
 
 ```powershell
-$p = 'C:\Users\Bluebulu998\.dsh\profiles\desktop\created-plugins\dsh-skill-manager'
+$p = "$env:USERPROFILE\.dsh\profiles\desktop\created-plugins\dsh-skill-manager"
 $env:ELECTRON_RUN_AS_NODE = '1'
 $env:ELECTRON_NO_ASAR = '1'   # 必须：asar 的 fs 包装层会把 test-host 里含 .asar 的 mkdir 拦成 ENOTDIR
 & $env:DSH_NODE_EXECUTABLE "$p\scripts\test-host.mjs"

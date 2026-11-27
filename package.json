@@ -7,6 +7,20 @@
     "dsh": ">=0.2.2-rc.5"
   },
   "description": "Cross-session skill manager page: lists filesystem-scanned skills by source, toggles SKILL.md invocation frontmatter, and shows scan roots.",
+  "license": "MIT",
+  "author": "Bluebulu998",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bluebulu998/dsh-skill-manager.git"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "bundle",
+    "skill",
+    "skill-manager",
+    "frontmatter"
+  ],
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

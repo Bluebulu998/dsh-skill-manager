@@ -339,19 +339,20 @@ if (hierarchyButton.props['aria-pressed'] !== false) throw new Error('source vie
 hierarchyButton.props.onClick()
 tree = await settle()
 text = textOf(tree)
-if (!text.includes('router-skill')) throw new Error('router row missing in hierarchy view')
-if (text.includes('demo-skill')) throw new Error('a collapsed router must not reveal its leaf')
-const expandButton = find(tree, (node) => node.type === 'button'
-  && node.props && node.props.className === 'dsc-expand')[0]
-if (!expandButton) throw new Error('router should be expandable')
-if (expandButton.props['aria-expanded'] !== false) throw new Error('router should start collapsed')
-expandButton.props.onClick()
-tree = await settle()
-text = textOf(tree)
-if (!text.includes('demo-skill')) throw new Error('expanding the router should reveal its leaf')
-const nestedRows = find(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dsc-row-nested'))
-if (nestedRows.length !== 1) throw new Error(`expected one nested leaf row, got ${nestedRows.length}`)
-console.log('ok hierarchy view folds routers and expands on demand')
+if (!text.includes('router-skill')) throw new Error('router branch missing in hierarchy view')
+if (!text.includes('demo-skill')) throw new Error('a branch must show its leaves without a second click')
+const branches = find(tree, (node) => node.props && typeof node.props.className === 'string'
+  && node.props.className.split(' ').includes('dsc-branch'))
+if (branches.length !== 2) throw new Error(`expected one router branch plus the standalone bucket, got ${branches.length}`)
+const routerBranch = branches[0]
+if (!textOf(routerBranch).includes('router-skill')) throw new Error('first branch should be the router')
+const leafRows = find(routerBranch, (node) => node.props && typeof node.props.className === 'string'
+  && node.props.className.includes('dsc-branch-leaves'))
+if (leafRows.length !== 1) throw new Error('router branch should own exactly one leaves container')
+if (!textOf(leafRows[0]).includes('demo-skill')) throw new Error('the branch should list its leaf')
+const standaloneBranch = branches[1]
+if (!textOf(standaloneBranch).includes('独立')) throw new Error('a standalone bucket should hold the unreferenced basics')
+console.log('ok hierarchy view is branch cards with leaves listed inline')
 
 const archiveSection = find(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dsc-archive-group'))[0]
 if (!archiveSection) throw new Error('archive section missing')

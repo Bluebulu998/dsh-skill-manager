@@ -99,8 +99,10 @@ window.__ModuleLoader__.load({
       overviewLeaf: '叶子',
       overviewStandalone: '独立',
       overviewArchived: '已归档',
-      hierarchyHint: '路由技能的正文用路径指向叶子；叶子被关进只读通道，不占模型目录。',
+      hierarchyHint: '每个路由技能是一个分支：它用正文里的路径指向叶子，叶子被关进只读通道，不占模型目录。',
       leafOf: '叶子',
+      leafCount: '个叶子',
+      branchNoLeaves: '这个分支没有指向任何叶子（路径可能已断，或它只是被引用）。',
       archiveTitle: '已移出扫描根',
       archiveNote: '放在 skills-off 里，不被加载：模型看不见，斜杠命令也调不到。要恢复就把它移回 skills。',
       expand: '展开',
@@ -197,8 +199,10 @@ window.__ModuleLoader__.load({
       overviewLeaf: 'Leaf',
       overviewStandalone: 'Standalone',
       overviewArchived: 'Archived',
-      hierarchyHint: 'Router bodies point at leaves by path; the leaves stay off the model catalog.',
+      hierarchyHint: 'Every router skill is a branch: its body points at leaves by path, and the leaves stay off the model catalog.',
       leafOf: 'Leaf',
+      leafCount: 'leaves',
+      branchNoLeaves: 'This branch points at no leaf (paths may be broken, or it is only referenced).',
       archiveTitle: 'Moved out of scan roots',
       archiveNote: 'Parked in skills-off and not loaded: invisible to the model and to slash commands. Move it back to skills to restore it.',
       expand: 'Expand',
@@ -476,6 +480,47 @@ window.__ModuleLoader__.load({
   border-left: 1px solid var(--dsw-alias-border-l2);
   padding-left: 6px;
 }
+.dsc-tree { display: flex; flex-direction: column; gap: 10px; }
+.dsc-tree-hint { margin: 0 0 2px; }
+.dsc-branch {
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.dsc-branch-head { background: var(--dsw-alias-bg-module-platform); }
+.dsc-branch-leaves { border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.dsc-branch-leaves .dsc-row {
+  position: relative;
+  padding-left: 26px;
+}
+.dsc-branch-leaves .dsc-row::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--dsw-alias-border-l2);
+}
+.dsc-branch-leaves .dsc-row:last-child::before { bottom: 50%; }
+.dsc-branch-leaves .dsc-row:last-child::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 9px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+.dsc-branch-empty { padding: 6px 0 6px 26px; margin: 0; }
+.dsc-branch-plain-head {
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+.dsc-branch-title { font-size: 12px; font-weight: 500; }
+.dsc-branch-count { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 .dsc-row-nested { background: transparent; }
 .dsc-row-nested .dsc-skill-name { font-weight: 400; }
 .dsc-tag-role { border: 0.5px solid var(--dsw-alias-border-l2); }
@@ -1297,20 +1342,28 @@ window.__ModuleLoader__.load({
               : null,
 
             (viewMode === 'hierarchy'
-              ? h('section', { className: 'dsc-source-group' },
-                h('div', { className: 'dsc-group-head' },
-                  h('h2', null, t('viewByHierarchy')),
-                  h('span', { className: 'dsc-hint' }, t('hierarchyHint')),
-                ),
-                h('div', { className: 'dsc-list' },
-                  h('div', { className: 'dsc-row dsc-row-head', role: 'row' },
-                    h('span', { role: 'columnheader' }, t('columnSkill')),
-                    h('span', { role: 'columnheader' }, t('modelColumn')),
-                    h('span', { role: 'columnheader' }, t('userColumn')),
-                  ),
-                  hierarchy.sections.map(({ router, children }) => renderSkillRow(router, { children })),
-                  hierarchy.rest.map((skill) => renderSkillRow(skill)),
-                ),
+              ? h('div', { className: 'dsc-tree' },
+                h('p', { className: 'dsc-hint dsc-tree-hint' }, t('hierarchyHint')),
+                hierarchy.sections.map(({ router, children }) => h('section', {
+                  key: router.path,
+                  className: 'dsc-branch',
+                },
+                h('div', { className: 'dsc-branch-head' }, renderSkillRow(router)),
+                children.length > 0
+                  ? h('div', { className: 'dsc-branch-leaves' },
+                    children.map((child) => renderSkillRow(child)))
+                  : h('p', { className: 'dsc-hint dsc-branch-empty' }, t('branchNoLeaves')),
+                )),
+                hierarchy.rest.length > 0
+                  ? h('section', { className: 'dsc-branch dsc-branch-plain' },
+                    h('div', { className: 'dsc-branch-head dsc-branch-plain-head' },
+                      h('span', { className: 'dsc-branch-title' }, t('roleStandalone')),
+                      h('span', { className: 'dsc-branch-count' }, String(hierarchy.rest.length)),
+                    ),
+                    h('div', { className: 'dsc-branch-leaves' },
+                      hierarchy.rest.map((skill) => renderSkillRow(skill))),
+                  )
+                  : null,
               )
               : groups.map((group) => h('section', { key: group.source, className: 'dsc-source-group' },
                 h('div', { className: 'dsc-group-head' },

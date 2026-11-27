@@ -22,6 +22,12 @@ const agentsHome = join(root, 'agents')
 // `home\skills`, which is not what any real install looks like.
 const userSkills = join(root, 'fixture', '.dsh', 'skills')
 const archiveRoot = join(root, 'resources', 'app.asar', 'dsh', 'skills')
+// skills-off lives beside the user's skills root in a real install; collectRoots
+// derives it from DSH_HOME, so the fixture has to mirror that placement.
+const parkedRoot = join(userHome, 'skills-off')
+const parkedDir = join(parkedRoot, 'parked')
+mkdirSync(parkedDir, { recursive: true })
+writeFileSync(join(parkedDir, 'SKILL.md'), '---\nname: parked-skill\ndescription: Parked\n---\nParked body\n', 'utf8')
 
 const leafDir = join(userSkills, 'leaf')
 const goneDir = join(userSkills, 'gone')
@@ -159,6 +165,35 @@ for (const skill of inventory.skills) {
   if (Object.hasOwn(skill, '__text')) throw new Error(`the scratch body leaked into the response: ${skill.name}`)
 }
 console.log('ok the response carries no skill bodies')
+
+if (!Array.isArray(inventory.archives) || inventory.archives.length !== 1) {
+  throw new Error(`expected one archive root, got ${JSON.stringify(inventory.archives)}`)
+}
+if (inventory.archives[0].path !== parkedRoot) throw new Error('the archive root must be the skills-off directory')
+if (!Array.isArray(inventory.archivedSkills) || inventory.archivedSkills.length !== 1) {
+  throw new Error(`expected one archived skill, got ${JSON.stringify(inventory.archivedSkills)}`)
+}
+const parked = inventory.archivedSkills[0]
+if (parked.name !== 'parked-skill' || parked.archived !== true) throw new Error('archived skills must be tagged')
+if (inventory.skills.some((skill) => skill.name === 'parked-skill')) {
+  throw new Error('an archived skill must not appear in the editable list')
+}
+console.log('ok skills-off is listed separately and read-only')
+
+for (const skill of inventory.skills) {
+  if (typeof skill.role !== 'string') throw new Error(`every skill needs a role: ${skill.name}`)
+}
+if (router.role !== 'router') throw new Error(`router role, got ${router.role}`)
+if (leaf.role !== 'leaf') throw new Error(`leaf role, got ${leaf.role}`)
+if (hidden.role !== 'leaf') throw new Error(`a disabled but referenced skill is still a leaf, got ${hidden.role}`)
+if (idle.role !== 'standalone') throw new Error(`unreferenced skill role, got ${idle.role}`)
+console.log('ok roles follow in/out degree only')
+
+const mapped = router.references.filter((ref) => typeof ref.target === 'string')
+if (mapped.length !== 2) throw new Error(`two references resolve to inventory entries, got ${mapped.length}`)
+if (!mapped.some((ref) => ref.target === 'leaf-skill')) throw new Error('the visible leaf must be mapped by target')
+if (mapped.some((ref) => ref.target === 'router-skill')) throw new Error('a skill must not map to itself')
+console.log('ok resolved references carry their target name')
 
 for (const [name, value] of previousEnv) {
   if (value === undefined) delete process.env[name]

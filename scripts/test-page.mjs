@@ -25,7 +25,33 @@ const inventoryPayload = {
       isDirectory: true,
     },
   ],
+  archives: [
+    { path: 'C:\\Users\\demo\\.dsh\\skills-off', source: 'user-dsh', rank: 400 },
+  ],
+  archivedSkills: [
+    {
+      name: 'parked-skill',
+      description: 'A skill parked outside the scan roots.',
+      path: 'C:\\Users\\demo\\.dsh\\skills-off\\parked\\SKILL.md',
+      source: 'user-dsh',
+      archived: true,
+    },
+  ],
   skills: [
+    {
+      name: 'router-skill',
+      description: 'Points at the demo skill by path.',
+      path: 'D:\\work\\.dsh\\skills\\router\\SKILL.md',
+      source: 'project-dsh',
+      provider: 'filesystem',
+      modelInvocable: true,
+      userInvocable: true,
+      workspaces: ['D:\\work'],
+      workspaceTitles: ['Demo workspace'],
+      role: 'router',
+      references: [{ path: 'D:\\work\\.dsh\\skills\\demo\\SKILL.md', exists: true, target: 'demo-skill' }],
+      referencedBy: [],
+    },
     {
       name: 'demo-skill',
       description: 'A demo skill used by the page test.',
@@ -36,6 +62,9 @@ const inventoryPayload = {
       userInvocable: true,
       workspaces: ['D:\\work'],
       workspaceTitles: ['Demo workspace'],
+      role: 'leaf',
+      references: [],
+      referencedBy: ['router-skill'],
     },
     {
       name: 'quiet-skill',
@@ -289,5 +318,43 @@ if (!revealCall) throw new Error('open folder did not call the reveal route')
 const revealBody = JSON.parse(revealCall.init.body)
 if (revealBody.path !== 'D:\\work\\.dsh\\skills' && revealBody.path !== 'C:\\Users\\demo\\.dsh\\skills') throw new Error(`reveal used an unknown root: ${revealBody.path}`)
 console.log('ok open folder calls the reveal route')
+
+// The overview strip answers "what shape is my skill set in" without scrolling.
+if (!text.includes('策略概览')) throw new Error('overview strip missing')
+const overviewStrip = find(tree, (node) => node.props && node.props.className === 'dsc-overview')[0]
+if (!overviewStrip) throw new Error('overview element missing')
+const overviewText = textOf(overviewStrip)
+if (!overviewText.includes('路由 1')) throw new Error(`overview should count the router: ${overviewText}`)
+if (!overviewText.includes('叶子 1')) throw new Error(`overview should count the leaf: ${overviewText}`)
+if (!overviewText.includes('已归档 1')) throw new Error(`overview should count archived skills: ${overviewText}`)
+console.log('ok overview counts roles and archived skills')
+
+const hierarchyButton = find(tree, (node) => node.type === 'button'
+  && node.children.some((child) => typeof child === 'string' && child === '按层级'))[0]
+if (!hierarchyButton) throw new Error('hierarchy view switch missing')
+if (hierarchyButton.props['aria-pressed'] !== false) throw new Error('source view should be active by default')
+hierarchyButton.props.onClick()
+tree = await settle()
+text = textOf(tree)
+if (!text.includes('router-skill')) throw new Error('router row missing in hierarchy view')
+if (text.includes('demo-skill')) throw new Error('a collapsed router must not reveal its leaf')
+const expandButton = find(tree, (node) => node.type === 'button'
+  && node.props && node.props.className === 'dsc-expand')[0]
+if (!expandButton) throw new Error('router should be expandable')
+if (expandButton.props['aria-expanded'] !== false) throw new Error('router should start collapsed')
+expandButton.props.onClick()
+tree = await settle()
+text = textOf(tree)
+if (!text.includes('demo-skill')) throw new Error('expanding the router should reveal its leaf')
+const nestedRows = find(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dsc-row-nested'))
+if (nestedRows.length !== 1) throw new Error(`expected one nested leaf row, got ${nestedRows.length}`)
+console.log('ok hierarchy view folds routers and expands on demand')
+
+const archiveSection = find(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dsc-archive-group'))[0]
+if (!archiveSection) throw new Error('archive section missing')
+if (!textOf(archiveSection).includes('parked-skill')) throw new Error('archived skill missing from the archive section')
+const archivedInputs = find(archiveSection, (node) => node.type === 'input')
+if (archivedInputs.length !== 0) throw new Error('archived skills must not offer toggles')
+console.log('ok archived skills render read-only in their own section')
 
 console.log('all page rendering and interaction checks passed')

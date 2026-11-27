@@ -78,6 +78,24 @@ window.__ModuleLoader__.load({
       stateModel: '模型可见',
       stateUser: '仅用户可调',
       stateOff: '已关闭',
+      viewBySource: '按来源',
+      viewByHierarchy: '按层级',
+      roleRouter: '路由',
+      roleMiddle: '中间层',
+      roleLeaf: '叶子',
+      roleStandalone: '独立',
+      overviewTitle: '策略概览',
+      overviewRouter: '路由',
+      overviewMiddle: '中间层',
+      overviewLeaf: '叶子',
+      overviewStandalone: '独立',
+      overviewArchived: '已归档',
+      hierarchyHint: '路由技能的正文用路径指向叶子；叶子被关进只读通道，不占模型目录。',
+      leafOf: '叶子',
+      archiveTitle: '已移出扫描根',
+      archiveNote: '放在 skills-off 里，不被加载：模型看不见，斜杠命令也调不到。要恢复就把它移回 skills。',
+      expand: '展开',
+      collapse: '收起',
       runtimeNote: '由插件在运行时注册的内置技能没有磁盘扫描根，不会出现在这里（例如 office、visualize 等）。',
       columnSkill: '技能',
       modelColumn: '对模型可见',
@@ -144,6 +162,24 @@ window.__ModuleLoader__.load({
       stateModel: 'Model-visible',
       stateUser: 'User only',
       stateOff: 'Disabled',
+      viewBySource: 'By source',
+      viewByHierarchy: 'By layer',
+      roleRouter: 'Router',
+      roleMiddle: 'Relay',
+      roleLeaf: 'Leaf',
+      roleStandalone: 'Standalone',
+      overviewTitle: 'Policy overview',
+      overviewRouter: 'Router',
+      overviewMiddle: 'Relay',
+      overviewLeaf: 'Leaf',
+      overviewStandalone: 'Standalone',
+      overviewArchived: 'Archived',
+      hierarchyHint: 'Router bodies point at leaves by path; the leaves stay off the model catalog.',
+      leafOf: 'Leaf',
+      archiveTitle: 'Moved out of scan roots',
+      archiveNote: 'Parked in skills-off and not loaded: invisible to the model and to slash commands. Move it back to skills to restore it.',
+      expand: 'Expand',
+      collapse: 'Collapse',
       runtimeNote: 'Bundled skills that plugins register at runtime have no on-disk scan root, so they are not listed here (for example office or visualize).',
       columnSkill: 'Skill',
       modelColumn: 'Model-visible',
@@ -375,6 +411,42 @@ window.__ModuleLoader__.load({
 }
 .dsc-row-head span:nth-child(2),
 .dsc-row-head span:nth-child(3) { text-align: center; }
+.dsc-overview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 12px 0 4px;
+}
+.dsc-overview-label {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  margin-right: 2px;
+}
+.dsc-expand {
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.dsc-expand:hover { background: var(--dsw-alias-bg-module-platform); }
+.dsc-children {
+  margin-left: 18px;
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  padding-left: 6px;
+}
+.dsc-row-nested { background: transparent; }
+.dsc-row-nested .dsc-skill-name { font-weight: 400; }
+.dsc-tag-role { border: 0.5px solid var(--dsw-alias-border-l2); }
+.dsc-tag-role.is-router { color: var(--dsw-alias-label-primary); }
+.dsc-tag-role.is-leaf { opacity: 0.75; }
+.dsc-archive-group { opacity: 0.82; }
+.dsc-row-archived { grid-template-columns: minmax(0, 1fr); }
+.dsc-row-archived .dsc-skill-name { font-weight: 400; }
 .dsc-skill { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .dsc-skill-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dsc-readonly {
@@ -617,6 +689,11 @@ window.__ModuleLoader__.load({
       const [revealErrors, setRevealErrors] = React.useState({})
       const [showMissing, setShowMissing] = React.useState(false)
       const [visibility, setVisibility] = React.useState('all')
+      // 'source' keeps the old flat view; 'hierarchy' folds routers and their
+      // leaves into one outline. Collapsed by default: 62 flat rows is the noise
+      // this view exists to remove.
+      const [viewMode, setViewMode] = React.useState('source')
+      const [expanded, setExpanded] = React.useState(() => new Set())
       const alive = React.useRef(true)
       const requestId = React.useRef(0)
 
@@ -742,6 +819,49 @@ window.__ModuleLoader__.load({
           .sort((left, right) => left.rank - right.rank || left.source.localeCompare(right.source))
       }, [data, t, visibility])
 
+      // Policy overview: one number per role, so "what shape is my skill set in"
+      // is readable without scrolling 62 rows.
+      const overview = React.useMemo(() => {
+        const counts = { router: 0, middle: 0, leaf: 0, standalone: 0 }
+        for (const skill of (data && data.skills) || []) {
+          const role = typeof skill.role === 'string' ? skill.role : 'standalone'
+          counts[role in counts ? role : 'standalone'] += 1
+        }
+        return counts
+      }, [data])
+
+      const archivedSkills = React.useMemo(
+        () => ((data && data.archivedSkills) || []).slice(),
+        [data],
+      )
+
+      const hierarchy = React.useMemo(() => {
+        if (data === null) return { sections: [], rest: [] }
+        const visible = data.skills.filter((skill) => matchesVisibility(skill, visibility))
+        const byName = new Map(visible.map((skill) => [skill.name, skill]))
+        const routers = visible.filter((skill) => skill.role === 'router' || skill.role === 'middle')
+        const claimed = new Set()
+        const sections = routers.map((router) => {
+          const children = (Array.isArray(router.references) ? router.references : [])
+            .map((ref) => (typeof ref.target === 'string' ? byName.get(ref.target) : undefined))
+            .filter((child) => child !== undefined)
+          for (const child of children) claimed.add(child.name)
+          return { router, children }
+        })
+        const routerNames = new Set(routers.map((skill) => skill.name))
+        const rest = visible.filter((skill) => !routerNames.has(skill.name) && !claimed.has(skill.name))
+        return { sections, rest }
+      }, [data, visibility])
+
+      const toggleExpanded = (name) => {
+        setExpanded((current) => {
+          const next = new Set(current)
+          if (next.has(name)) next.delete(name)
+          else next.add(name)
+          return next
+        })
+      }
+
       const roots = React.useMemo(() => {
         if (data === null) return []
         return (data.roots || []).slice().sort((left, right) => displayRank(effectiveSource(left.source, left.path)) - displayRank(effectiveSource(right.source, right.path))
@@ -776,6 +896,82 @@ window.__ModuleLoader__.load({
         )
       }
 
+      const renderSkillRow = (skill, options = {}) => {
+        const archived = isArchivePath(skill.path)
+        // The reference graph, computed by the host: how many leaves this body
+        // points at, how many of those are gone, and who points here.
+        const references = Array.isArray(skill.references) ? skill.references : []
+        const brokenLinks = references.filter((ref) => ref.exists === false && ref.archive !== true).length
+        const referencedBy = Array.isArray(skill.referencedBy) ? skill.referencedBy : []
+        const state = policyStateOf(skill)
+        const children = options.children ?? []
+        const expandable = children.length > 0
+        const expandedHere = expandable && expanded.has(skill.name)
+        const roleKey = skill.role === 'middle' ? 'Middle' : skill.role === 'router' ? 'Router' : skill.role === 'leaf' ? 'Leaf' : 'Standalone'
+        const row = h('div', { className: `dsc-row${options.indent ? ' dsc-row-nested' : ''}`, role: 'row' },
+          h('div', { className: 'dsc-skill' },
+            h('div', { className: 'dsc-skill-title' },
+              expandable
+                ? h('button', {
+                  type: 'button',
+                  className: 'dsc-expand',
+                  'aria-expanded': expandedHere,
+                  'aria-label': expandedHere ? t('collapse') : t('expand'),
+                  onClick: () => toggleExpanded(skill.name),
+                }, expandedHere ? '▾' : '▸')
+                : null,
+              h('span', { className: 'dsc-skill-name' }, skill.name),
+              h('span', { className: `dsc-tag dsc-tag-state is-${state}` }, t(`state${state === 'model' ? 'Model' : state === 'user' ? 'User' : 'Off'}`)),
+              typeof skill.role === 'string'
+                ? h('span', { className: `dsc-tag dsc-tag-role is-${skill.role}` }, t(`role${roleKey}`))
+                : null,
+              references.length > 0
+                ? h('span', { className: 'dsc-tag', title: references.map((ref) => ref.path).join('\n') }, `${t('refRouter')} · ${references.length}`)
+                : null,
+              brokenLinks > 0
+                ? h('span', { className: 'dsc-tag dsc-tag-bad' }, `${t('refBroken')} · ${brokenLinks}`)
+                : null,
+              referencedBy.length > 0
+                ? h('span', { className: 'dsc-tag', title: referencedBy.join('\n') }, `${t('refLeaf')} · ${referencedBy.length}`)
+                : null,
+              archived
+                ? h('span', { className: 'dsc-readonly' }, t('archiveHint'))
+                : null,
+            ),
+            skill.description
+              ? h('p', { className: 'dsc-skill-desc', title: skill.description }, skill.description)
+              : null,
+            h('code', { className: 'dsc-skill-path', title: skill.path }, skill.path),
+            skill.workspaceTitles && skill.workspaceTitles.length > 0
+              ? h('span', { className: 'dsc-skill-path' }, skill.workspaceTitles.join(' · '))
+              : null,
+          ),
+          h('div', { className: 'dsc-toggle' }, h(Toggle, {
+            checked: skill.modelInvocable !== false,
+            disabled: archived || pending[skill.path] === true,
+            label: t('toggleModel'),
+            name: skill.name,
+            onChange: (checked) => { void setFlag(skill, 'modelInvocable', checked) },
+          })),
+          h('div', { className: 'dsc-toggle' }, h(Toggle, {
+            checked: skill.userInvocable !== false,
+            disabled: archived || pending[skill.path] === true,
+            label: t('toggleUser'),
+            name: skill.name,
+            onChange: (checked) => { void setFlag(skill, 'userInvocable', checked) },
+          })),
+          rowErrors[skill.path]
+            ? h('p', { className: 'dsc-row-detail', role: 'alert' }, rowErrors[skill.path])
+            : null,
+        )
+        return h(React.Fragment, { key: skill.path },
+          row,
+          expandedHere
+            ? h('div', { className: 'dsc-children' }, children.map((child) => renderSkillRow(child, { indent: true })))
+            : null,
+        )
+      }
+
       return h('div', { className: 'dsc-page' },
         h('style', null, CSS),
         h('div', { className: 'dsc-scroll' },
@@ -796,6 +992,16 @@ window.__ModuleLoader__.load({
                       onClick: () => setVisibility(value),
                     }, t(key))),
                 ),
+                h('div', { className: 'dsc-filters', role: 'group' },
+                  [['source', 'viewBySource'], ['hierarchy', 'viewByHierarchy']]
+                    .map(([value, key]) => h('button', {
+                      key: value,
+                      type: 'button',
+                      className: `dsc-btn dsc-btn-quiet${viewMode === value ? ' is-active' : ''}`,
+                      'aria-pressed': viewMode === value,
+                      onClick: () => setViewMode(value),
+                    }, t(key))),
+                ),
                 h('button', {
                   type: 'button',
                   className: 'dsc-btn',
@@ -813,6 +1019,18 @@ window.__ModuleLoader__.load({
                   className: 'dsc-btn dsc-btn-quiet',
                   onClick: () => { void load(true) },
                 }, t('retry')),
+              )
+              : null,
+
+            data !== null
+              ? h('div', { className: 'dsc-overview' },
+                h('span', { className: 'dsc-overview-label' }, t('overviewTitle')),
+                h('span', { className: 'dsc-chip' }, `${t('overviewRouter')} ${overview.router + overview.middle}`),
+                h('span', { className: 'dsc-chip' }, `${t('overviewLeaf')} ${overview.leaf}`),
+                h('span', { className: 'dsc-chip' }, `${t('overviewStandalone')} ${overview.standalone}`),
+                archivedSkills.length > 0
+                  ? h('span', { className: 'dsc-chip dsc-chip-muted' }, `${t('overviewArchived')} ${archivedSkills.length}`)
+                  : null,
               )
               : null,
 
@@ -880,74 +1098,61 @@ window.__ModuleLoader__.load({
               )
               : null,
 
-            groups.map((group) => h('section', { key: group.source, className: 'dsc-source-group' },
-              h('div', { className: 'dsc-group-head' },
-                h('h2', null, group.label),
-                h('span', { className: 'dsc-group-count' }, countText(t, group.skills.length, 'skillCount')),
-                h('span', { className: 'dsc-chip' }, group.source),
-              ),
-              h('div', { className: 'dsc-list' },
-                h('div', { className: 'dsc-row dsc-row-head', role: 'row' },
-                  h('span', { role: 'columnheader' }, t('columnSkill')),
-                  h('span', { role: 'columnheader' }, t('modelColumn')),
-                  h('span', { role: 'columnheader' }, t('userColumn')),
+            (viewMode === 'hierarchy'
+              ? h('section', { className: 'dsc-source-group' },
+                h('div', { className: 'dsc-group-head' },
+                  h('h2', null, t('viewByHierarchy')),
+                  h('span', { className: 'dsc-hint' }, t('hierarchyHint')),
                 ),
-                group.skills.map((skill) => {
-                  const archived = isArchivePath(skill.path)
-                  // The reference graph, computed by the host: how many leaves this
-                  // body points at, how many of those are gone, and who points here.
-                  const references = Array.isArray(skill.references) ? skill.references : []
-                  const brokenLinks = references.filter((ref) => ref.exists === false && ref.archive !== true).length
-                  const referencedBy = Array.isArray(skill.referencedBy) ? skill.referencedBy : []
-                  return h('div', { key: skill.path, className: 'dsc-row', role: 'row' },
+                h('div', { className: 'dsc-list' },
+                  h('div', { className: 'dsc-row dsc-row-head', role: 'row' },
+                    h('span', { role: 'columnheader' }, t('columnSkill')),
+                    h('span', { role: 'columnheader' }, t('modelColumn')),
+                    h('span', { role: 'columnheader' }, t('userColumn')),
+                  ),
+                  hierarchy.sections.map(({ router, children }) => renderSkillRow(router, { children })),
+                  hierarchy.rest.map((skill) => renderSkillRow(skill)),
+                ),
+              )
+              : groups.map((group) => h('section', { key: group.source, className: 'dsc-source-group' },
+                h('div', { className: 'dsc-group-head' },
+                  h('h2', null, group.label),
+                  h('span', { className: 'dsc-group-count' }, countText(t, group.skills.length, 'skillCount')),
+                  h('span', { className: 'dsc-chip' }, group.source),
+                ),
+                h('div', { className: 'dsc-list' },
+                  h('div', { className: 'dsc-row dsc-row-head', role: 'row' },
+                    h('span', { role: 'columnheader' }, t('columnSkill')),
+                    h('span', { role: 'columnheader' }, t('modelColumn')),
+                    h('span', { role: 'columnheader' }, t('userColumn')),
+                  ),
+                  group.skills.map((skill) => renderSkillRow(skill)),
+                ),
+              ))),
+
+            archivedSkills.length > 0
+              ? h('section', { className: 'dsc-source-group dsc-archive-group' },
+                h('div', { className: 'dsc-group-head' },
+                  h('h2', null, t('archiveTitle')),
+                  h('span', { className: 'dsc-group-count' }, String(archivedSkills.length)),
+                  h('span', { className: 'dsc-hint' }, t('archiveNote')),
+                ),
+                h('div', { className: 'dsc-list' },
+                  archivedSkills.map((skill) => h('div', { key: skill.path, className: 'dsc-row dsc-row-archived', role: 'row' },
                     h('div', { className: 'dsc-skill' },
                       h('div', { className: 'dsc-skill-title' },
                         h('span', { className: 'dsc-skill-name' }, skill.name),
-                        h('span', {
-                          className: `dsc-tag dsc-tag-state is-${policyStateOf(skill)}`,
-                        }, t(`state${policyStateOf(skill) === 'model' ? 'Model' : policyStateOf(skill) === 'user' ? 'User' : 'Off'}`)),
-                        references.length > 0
-                          ? h('span', { className: 'dsc-tag', title: references.map((ref) => ref.path).join('\n') }, `${t('refRouter')} · ${references.length}`)
-                          : null,
-                        brokenLinks > 0
-                          ? h('span', { className: 'dsc-tag dsc-tag-bad' }, `${t('refBroken')} · ${brokenLinks}`)
-                          : null,
-                        referencedBy.length > 0
-                          ? h('span', { className: 'dsc-tag', title: referencedBy.join('\n') }, `${t('refLeaf')} · ${referencedBy.length}`)
-                          : null,
-                        archived
-                          ? h('span', { className: 'dsc-readonly' }, t('archiveHint'))
-                          : null,
+                        h('span', { className: 'dsc-readonly' }, t('archiveHint')),
                       ),
                       skill.description
-                        ? h('p', { className: 'dsc-skill-desc', title: skill.description }, skill.description)
+                        ? h('p', { className: 'dsc-skill-desc' }, skill.description)
                         : null,
-                      h('code', { className: 'dsc-skill-path', title: skill.path }, skill.path),
-                      skill.workspaceTitles && skill.workspaceTitles.length > 0
-                        ? h('span', { className: 'dsc-skill-path' }, skill.workspaceTitles.join(' · '))
-                        : null,
+                      h('code', { className: 'dsc-skill-path' }, skill.path),
                     ),
-                    h('div', { className: 'dsc-toggle' }, h(Toggle, {
-                      checked: skill.modelInvocable !== false,
-                      disabled: archived || pending[skill.path] === true,
-                      label: t('toggleModel'),
-                      name: skill.name,
-                      onChange: (checked) => { void setFlag(skill, 'modelInvocable', checked) },
-                    })),
-                    h('div', { className: 'dsc-toggle' }, h(Toggle, {
-                      checked: skill.userInvocable !== false,
-                      disabled: archived || pending[skill.path] === true,
-                      label: t('toggleUser'),
-                      name: skill.name,
-                      onChange: (checked) => { void setFlag(skill, 'userInvocable', checked) },
-                    })),
-                    rowErrors[skill.path]
-                      ? h('p', { className: 'dsc-row-detail', role: 'alert' }, rowErrors[skill.path])
-                      : null,
-                  )
-                })
-              ),
-            )),
+                  )),
+                ),
+              )
+              : null,
 
             h('p', { className: 'dsc-footer-hint' }, t('editHint')),
             h('p', { className: 'dsc-footer-hint' }, t('runtimeNote')),

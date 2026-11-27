@@ -70,8 +70,11 @@ scripts/probe-local.mjs 对本机真实目录跑一次发现，不开窗口、�
   "skills": [{ "name": "...", "description": "...", "path": "...", "source": "...", "provider": "filesystem",
                "modelInvocable": true, "userInvocable": true, "workspaces": [], "workspaceTitles": [],
                "rank": 400, "shadowed": false,
-               "references": [{ "path": "~/.dsh/skills/leaf/SKILL.md", "exists": true }],
-               "referencedBy": ["router-skill"] }],
+               "references": [{ "path": "~/.dsh/skills/leaf/SKILL.md", "exists": true, "target": "leaf-skill" }],
+               "referencedBy": ["router-skill"],
+               "role": "router" }],
+  "archives": [{ "path": "~/.dsh/skills-off", "source": "user-dsh", "rank": 400 }],
+  "archivedSkills": [{ "name": "parked", "description": "...", "path": "...", "source": "user-dsh", "archived": true }],
   "warnings": ["..."] }
 ```
 

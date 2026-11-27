@@ -60,14 +60,17 @@ for (const skill of inventory.skills) {
   const broken = references.filter((ref) => ref.exists === false && ref.archive !== true).length
   const referencedBy = Array.isArray(skill.referencedBy) ? skill.referencedBy : []
   const graph = [
+    `role=${skill.role ?? '?'}`,
     references.length > 0 ? `refs=${references.length}` : '',
     broken > 0 ? `broken=${broken}` : '',
     referencedBy.length > 0 ? `by=${referencedBy.join(',')}` : '',
   ].filter((part) => part.length > 0).join(' ')
-  console.log(`  ${skill.name.padEnd(28)} ${skill.source.padEnd(15)} ${flags}${graph ? ` ${graph}` : ''}`)
+  console.log(`  ${skill.name.padEnd(28)} ${skill.source.padEnd(15)} ${flags} ${graph}`)
 }
 if (inventory.warnings.length > 0) {
   console.log('warnings:')
   for (const warning of inventory.warnings) console.log(`  - ${warning}`)
 }
+console.log(`archives: ${inventory.archivedSkills.length} archived skills in ${inventory.archives.length} root(s)`)
+for (const archived of inventory.archivedSkills) console.log(`  - ${archived.name} (${archived.source})`)
 console.log(`total: ${inventory.skills.length} skills, ${inventory.roots.length} roots`)

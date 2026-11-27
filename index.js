@@ -288,7 +288,28 @@ function collectRoots(scope) {
   }
 
   roots.sort((left, right) => left.rank - right.rank || left.path.localeCompare(right.path))
-  return { roots, workspaces, configs }
+
+  // A sibling `skills-off` directory is how this machine parks a skill without
+  // deleting it: the provider never scans it, so the row must never be offered
+  // for editing, but hiding it entirely made "where did that skill go" a
+  // filesystem question. Listed separately and read-only.
+  const archives = []
+  const archiveSeen = new Set()
+  for (const config of configs) {
+    if (!config.includeDefaultRoots) continue
+    for (const [base, source] of [[config.dshHome, 'user-dsh'], [config.agentsHome, 'user-agents']]) {
+      if (typeof base !== 'string') continue
+      const path = join(base, 'skills-off')
+      const key = normalizePath(path)
+      if (archiveSeen.has(key)) continue
+      archiveSeen.add(key)
+      const info = statDirectory(path)
+      if (!info.exists || !info.isDirectory) continue
+      archives.push({ path, source, rank: SOURCE_RANKS[source] ?? 999 })
+    }
+  }
+
+  return { roots, workspaces, configs, archives }
 }
 
 function rootOfSkillPath(skillPath) {
@@ -514,7 +535,7 @@ function scanRoot(root, warnings) {
  * page both the inventory and the file paths it needs to edit.
  */
 function discover(scope) {
-  const { roots, workspaces } = collectRoots(scope)
+  const { roots, workspaces, archives } = collectRoots(scope)
   const warnings = []
   const byPath = new Map()
 
@@ -580,6 +601,43 @@ function discover(scope) {
   if (brokenLinks > 0) {
     warnings.push(`${brokenLinks} 处路由引用指向不存在的技能文件，读过去会失败。`)
   }
+  // The reference graph is only useful if it can be read as a hierarchy: map
+  // each resolved target back to an inventory entry, then derive one role per
+  // skill from its in/out degree. No heuristics on names or descriptions.
+  const nameByPath = new Map(skills.map((skill) => [normalizePath(skill.path), skill.name]))
+  for (const skill of skills) {
+    skill.references = skill.references.map((ref) => {
+      if (!ref.exists) return ref
+      const target = nameByPath.get(normalizePath(expandHome(ref.path)))
+      return typeof target === 'string' ? { ...ref, target } : ref
+    })
+  }
+  for (const skill of skills) {
+    const outbound = skill.references.length
+    const inbound = skill.referencedBy.length
+    skill.role = outbound > 0 && inbound > 0 ? 'middle'
+      : outbound > 0 ? 'router'
+        : inbound > 0 ? 'leaf'
+          : 'standalone'
+  }
+
+  const archivedSkills = []
+  for (const archive of archives) {
+    for (const skill of scanRoot(archive, warnings)) {
+      archivedSkills.push({
+        name: skill.name,
+        description: skill.description,
+        path: skill.file,
+        source: archive.source,
+        archived: true,
+      })
+    }
+  }
+  archivedSkills.sort((left, right) => left.name.localeCompare(right.name))
+  if (archivedSkills.length > 0) {
+    warnings.push(`${archivedSkills.length} 个技能已移出扫描根（${archives.map((entry) => entry.path).join('、')}），模型看不到它们；要让它们回来，得把目录移回 skills。`)
+  }
+
   const appliesEverywhere = (skill) => skill.workspaces.length === 0
   const overlaps = (left, right) => appliesEverywhere(left)
     || appliesEverywhere(right)
@@ -603,16 +661,18 @@ function discover(scope) {
     || left.name.localeCompare(right.name)
     || left.path.localeCompare(right.path))
 
-  return { roots, skills, warnings }
+  return { roots, archives, archivedSkills, skills, warnings }
 }
 
 async function readInventory(scope) {
-  const { roots, skills, warnings } = discover(scope)
+  const { roots, archives, archivedSkills, skills, warnings } = discover(scope)
   return {
     value: {
       ok: true,
       generatedAt: new Date().toISOString(),
       roots,
+      archives,
+      archivedSkills,
       skills,
       warnings,
     },

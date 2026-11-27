@@ -55,6 +55,9 @@ window.__ModuleLoader__.load({
       opening: '打开中…',
       editHint: '勾选即改写文件；取消勾选会移除对应的限制字段。',
       archiveHint: '位于安装包内，只读',
+      refRouter: '路由',
+      refLeaf: '被引用',
+      refBroken: '断链',
       runtimeNote: '由插件在运行时注册的内置技能没有磁盘扫描根，不会出现在这里（例如 office、visualize 等）。',
       columnSkill: '技能',
       modelColumn: '对模型可见',
@@ -111,6 +114,9 @@ window.__ModuleLoader__.load({
       opening: 'Opening…',
       editHint: 'Ticking rewrites the file; clearing removes the corresponding restriction key.',
       archiveHint: 'Inside the install archive; read-only',
+      refRouter: 'Router',
+      refLeaf: 'Referenced',
+      refBroken: 'Broken',
       runtimeNote: 'Bundled skills that plugins register at runtime have no on-disk scan root, so they are not listed here (for example office or visualize).',
       columnSkill: 'Skill',
       modelColumn: 'Model-visible',
@@ -353,6 +359,20 @@ window.__ModuleLoader__.load({
   font-size: 11px;
   line-height: 16px;
   white-space: nowrap;
+}
+.dsc-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.dsc-tag-bad {
+  color: var(--dsw-alias-state-error-primary);
+  border: 0.5px solid currentColor;
 }
 .dsc-skill-name {
   font-weight: 500;
@@ -829,10 +849,24 @@ window.__ModuleLoader__.load({
                 ),
                 group.skills.map((skill) => {
                   const archived = isArchivePath(skill.path)
+                  // The reference graph, computed by the host: how many leaves this
+                  // body points at, how many of those are gone, and who points here.
+                  const references = Array.isArray(skill.references) ? skill.references : []
+                  const brokenLinks = references.filter((ref) => ref.exists === false && ref.archive !== true).length
+                  const referencedBy = Array.isArray(skill.referencedBy) ? skill.referencedBy : []
                   return h('div', { key: skill.path, className: 'dsc-row', role: 'row' },
                     h('div', { className: 'dsc-skill' },
                       h('div', { className: 'dsc-skill-title' },
                         h('span', { className: 'dsc-skill-name' }, skill.name),
+                        references.length > 0
+                          ? h('span', { className: 'dsc-tag', title: references.map((ref) => ref.path).join('\n') }, `${t('refRouter')} · ${references.length}`)
+                          : null,
+                        brokenLinks > 0
+                          ? h('span', { className: 'dsc-tag dsc-tag-bad' }, `${t('refBroken')} · ${brokenLinks}`)
+                          : null,
+                        referencedBy.length > 0
+                          ? h('span', { className: 'dsc-tag', title: referencedBy.join('\n') }, `${t('refLeaf')} · ${referencedBy.length}`)
+                          : null,
                         archived
                           ? h('span', { className: 'dsc-readonly' }, t('archiveHint'))
                           : null,

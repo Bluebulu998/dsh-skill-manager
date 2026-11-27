@@ -56,7 +56,15 @@ for (const root of inventory.roots) {
 console.log('skills:')
 for (const skill of inventory.skills) {
   const flags = `model=${skill.modelInvocable} user=${skill.userInvocable}${skill.shadowed ? ' shadowed' : ''}`
-  console.log(`  ${skill.name.padEnd(28)} ${skill.source.padEnd(15)} ${flags}`)
+  const references = Array.isArray(skill.references) ? skill.references : []
+  const broken = references.filter((ref) => ref.exists === false && ref.archive !== true).length
+  const referencedBy = Array.isArray(skill.referencedBy) ? skill.referencedBy : []
+  const graph = [
+    references.length > 0 ? `refs=${references.length}` : '',
+    broken > 0 ? `broken=${broken}` : '',
+    referencedBy.length > 0 ? `by=${referencedBy.join(',')}` : '',
+  ].filter((part) => part.length > 0).join(' ')
+  console.log(`  ${skill.name.padEnd(28)} ${skill.source.padEnd(15)} ${flags}${graph ? ` ${graph}` : ''}`)
 }
 if (inventory.warnings.length > 0) {
   console.log('warnings:')

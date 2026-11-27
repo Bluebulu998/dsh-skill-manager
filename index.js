@@ -421,7 +421,42 @@ function readSkillFile(file) {
     description,
     ...(whenToUse.length > 0 ? { whenToUse } : {}),
     ...invocation,
+    // Kept for the reference scan in `discover()` and dropped there: the body is
+    // never part of the inventory response.
+    text,
   }
+}
+
+/**
+ * Skill-file references written inside a router body. Routers point at their
+ * leaves with hand-written paths (`~/.dsh/skills/<name>/SKILL.md`), so a rename
+ * or a move silently degrades into a failed `read` at task time. Only paths
+ * that name a `.md` under a `.dsh`/`.agents` `skills` root count; the page uses
+ * this list to mark each row as a router, a leaf, or a broken link.
+ */
+const SKILL_REF_PATTERN = /(?:~|[A-Za-z]:)[\\/](?:(?:[^\s`'"|<>()[\]{}]+[\\/])*(?:\.dsh|\.agents)[\\/]skills|(?:[^\s`'"|<>()[\]{}]+[\\/])*app\.asar[\\/]dsh[\\/]skills)[\\/][\w.-]+[\\/][\w.-]+\.md/gi
+
+/**
+ * Extract the distinct skill files one body references.
+ * @param text - full skill file text.
+ * @returns one entry per target: the path as written, plus whether it resolves.
+ */
+function scanRouteReferences(text) {
+  if (typeof text !== 'string' || text.length === 0) return []
+  const seen = new Map()
+  SKILL_REF_PATTERN.lastIndex = 0
+  let match
+  while ((match = SKILL_REF_PATTERN.exec(text)) !== null) {
+    const raw = match[0]
+    const expanded = expandHome(raw)
+    const key = normalizePath(expanded)
+    if (seen.has(key)) continue
+    const archive = isArchivePath(raw)
+    // A path inside app.asar cannot be probed from Node: the archive is a
+    // single file, so `existsSync` reports false for every entry inside it.
+    seen.set(key, archive ? { path: raw, exists: false, archive: true } : { path: raw, exists: existsSync(expanded) })
+  }
+  return [...seen.values()]
 }
 
 /** List the direct `<name>/SKILL.md` bundles and `*.md` files of one root. */
@@ -508,11 +543,43 @@ function discover(scope) {
           .map((workspace) => workspace.title)
           .filter((title) => typeof title === 'string' && title.length > 0),
         rank: root.rank,
+        __text: skill.text,
       })
     }
   }
 
   const skills = [...byPath.values()]
+
+  // Router skills name their leaves with hand-written paths. Resolve that graph
+  // now so a renamed or moved leaf surfaces as a broken link instead of a failed
+  // `read` at task time. Only model-visible bodies count as evidence: a skill the
+  // model cannot discover cannot route anything on its own, and its body only
+  // reaches a context when the user names it explicitly.
+  const referencedBy = new Map()
+  for (const skill of skills) {
+    const text = skill.__text
+    delete skill.__text
+    skill.references = []
+    if (skill.modelInvocable === false) continue
+    const refs = scanRouteReferences(text)
+    skill.references = refs
+    for (const ref of refs) {
+      if (!ref.exists) continue
+      const key = normalizePath(expandHome(ref.path))
+      const names = referencedBy.get(key)
+      if (names) names.add(skill.name)
+      else referencedBy.set(key, new Set([skill.name]))
+    }
+  }
+  for (const skill of skills) {
+    const names = referencedBy.get(normalizePath(skill.path))
+    skill.referencedBy = names ? [...names].sort() : []
+  }
+  const brokenLinks = skills.reduce((total, skill) => total
+    + skill.references.filter((ref) => !ref.exists && !ref.archive).length, 0)
+  if (brokenLinks > 0) {
+    warnings.push(`${brokenLinks} 处路由引用指向不存在的技能文件，读过去会失败。`)
+  }
   const appliesEverywhere = (skill) => skill.workspaces.length === 0
   const overlaps = (left, right) => appliesEverywhere(left)
     || appliesEverywhere(right)

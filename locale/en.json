@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Skill catalog",
+    "description": "A cross-session skill catalog in the sidebar that lists currently scanned skills by source, rewrites each SKILL.md frontmatter to control model visibility and user invocation, and shows scan roots read-only with an open-folder action."
+  }
+}

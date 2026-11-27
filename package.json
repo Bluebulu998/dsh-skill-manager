@@ -1,0 +1,40 @@
+{
+  "name": "@dsh-local/view-f14b8d9a-d47d-4fd4-933c-f861058ea59f",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-session skill catalog page: lists filesystem-scanned skills by source, toggles SKILL.md invocation frontmatter, and shows scan roots.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "scripts/build.mjs",
+    "scripts/probe-local.mjs",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "AGENTS.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/test-host.mjs && node scripts/test-frontmatter.mjs && node scripts/test-client.mjs && node scripts/test-page.mjs && node scripts/build.mjs",
+    "probe": "node scripts/probe-local.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}

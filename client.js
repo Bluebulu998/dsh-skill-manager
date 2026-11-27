@@ -50,6 +50,15 @@ window.__ModuleLoader__.load({
       return policyStateOf(skill) === visibility
     }
 
+    // Name and description only: scanning file paths or bodies here would make
+    // the box behave differently depending on where a skill happens to live.
+    function matchesQuery(skill, query) {
+      const needle = query.trim().toLowerCase()
+      if (needle.length === 0) return true
+      if (skill.name.toLowerCase().includes(needle)) return true
+      return typeof skill.description === 'string' && skill.description.toLowerCase().includes(needle)
+    }
+
     const ZH = {
       panel: '技能管理',
       title: '技能管理',
@@ -107,6 +116,9 @@ window.__ModuleLoader__.load({
       bulkUserOff: '禁止用户调用',
       bulkRestore: '恢复默认',
       bulkClear: '取消选择',
+      searchPlaceholder: '搜索技能名或描述',
+      selectAll: '全选',
+      selectNone: '清空选择',
       runtimeNote: '由插件在运行时注册的内置技能没有磁盘扫描根，不会出现在这里（例如 office、visualize 等）。',
       columnSkill: '技能',
       modelColumn: '对模型可见',
@@ -202,6 +214,9 @@ window.__ModuleLoader__.load({
       bulkUserOff: 'Disallow user calls',
       bulkRestore: 'Restore defaults',
       bulkClear: 'Clear selection',
+      searchPlaceholder: 'Search name or description',
+      selectAll: 'Select all',
+      selectNone: 'Clear selection',
       runtimeNote: 'Bundled skills that plugins register at runtime have no on-disk scan root, so they are not listed here (for example office or visualize).',
       columnSkill: 'Skill',
       modelColumn: 'Model-visible',
@@ -466,6 +481,15 @@ window.__ModuleLoader__.load({
 .dsc-tag-role { border: 0.5px solid var(--dsw-alias-border-l2); }
 .dsc-tag-role.is-router { color: var(--dsw-alias-label-primary); }
 .dsc-tag-role.is-leaf { opacity: 0.75; }
+.dsc-search {
+  width: 180px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
 .dsc-pick { margin: 0 4px 0 0; flex: none; }
 .dsc-bulk {
   position: sticky;
@@ -730,6 +754,7 @@ window.__ModuleLoader__.load({
       const [revealErrors, setRevealErrors] = React.useState({})
       const [showMissing, setShowMissing] = React.useState(false)
       const [visibility, setVisibility] = React.useState('all')
+      const [query, setQuery] = React.useState('')
       // 'source' keeps the old flat view; 'hierarchy' folds routers and their
       // leaves into one outline. Collapsed by default: 62 flat rows is the noise
       // this view exists to remove.
@@ -852,6 +877,7 @@ window.__ModuleLoader__.load({
         const map = new Map()
         for (const skill of data.skills) {
           if (!matchesVisibility(skill, visibility)) continue
+          if (!matchesQuery(skill, query)) continue
           const source = effectiveSource(skill.source || 'custom', skill.path)
           if (!map.has(source)) map.set(source, [])
           map.get(source).push(skill)
@@ -864,7 +890,7 @@ window.__ModuleLoader__.load({
             skills: skills.slice().sort((left, right) => left.name.localeCompare(right.name)),
           }))
           .sort((left, right) => left.rank - right.rank || left.source.localeCompare(right.source))
-      }, [data, t, visibility])
+      }, [data, t, visibility, query])
 
       // Policy overview: one number per role, so "what shape is my skill set in"
       // is readable without scrolling 62 rows.
@@ -884,7 +910,9 @@ window.__ModuleLoader__.load({
 
       const hierarchy = React.useMemo(() => {
         if (data === null) return { sections: [], rest: [] }
-        const visible = data.skills.filter((skill) => matchesVisibility(skill, visibility))
+        const visible = data.skills
+          .filter((skill) => matchesVisibility(skill, visibility))
+          .filter((skill) => matchesQuery(skill, query))
         const byName = new Map(visible.map((skill) => [skill.name, skill]))
         const routers = visible.filter((skill) => skill.role === 'router' || skill.role === 'middle')
         const claimed = new Set()
@@ -898,7 +926,7 @@ window.__ModuleLoader__.load({
         const routerNames = new Set(routers.map((skill) => skill.name))
         const rest = visible.filter((skill) => !routerNames.has(skill.name) && !claimed.has(skill.name))
         return { sections, rest }
-      }, [data, visibility])
+      }, [data, visibility, query])
 
       const toggleExpanded = (name) => {
         setExpanded((current) => {
@@ -1075,6 +1103,14 @@ window.__ModuleLoader__.load({
                 h('p', { className: 'dsc-subtitle' }, t('subtitle')),
               ),
               h('div', { className: 'dsc-actions' },
+                h('input', {
+                  type: 'search',
+                  className: 'dsc-search',
+                  placeholder: t('searchPlaceholder'),
+                  'aria-label': t('searchPlaceholder'),
+                  value: query,
+                  onChange: (event) => setQuery(event.target.value),
+                }),
                 h('div', { className: 'dsc-filters', role: 'group' },
                   [['all', 'visibilityAll'], ['model', 'visibilityModel'], ['user', 'visibilityUser'], ['off', 'visibilityOff']]
                     .map(([value, key]) => h('button', {
@@ -1123,6 +1159,20 @@ window.__ModuleLoader__.load({
                 h('span', { className: 'dsc-chip' }, `${t('overviewStandalone')} ${overview.standalone}`),
                 archivedSkills.length > 0
                   ? h('span', { className: 'dsc-chip dsc-chip-muted' }, `${t('overviewArchived')} ${archivedSkills.length}`)
+                  : null,
+                h('button', {
+                  type: 'button',
+                  className: 'dsc-btn dsc-btn-quiet',
+                  onClick: () => setSelected(new Set(data.skills
+                    .filter((skill) => matchesVisibility(skill, visibility) && matchesQuery(skill, query))
+                    .map((skill) => skill.path))),
+                }, t('selectAll')),
+                selected.size > 0
+                  ? h('button', {
+                    type: 'button',
+                    className: 'dsc-btn dsc-btn-quiet',
+                    onClick: () => setSelected(new Set()),
+                  }, t('selectNone'))
                   : null,
               )
               : null,

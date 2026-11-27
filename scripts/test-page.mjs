@@ -390,4 +390,27 @@ const afterBar = find(tree, (node) => node.props && node.props.className === 'ds
 if (!afterBar || !textOf(afterBar).includes('完成 2')) throw new Error(`bulk result missing: ${afterBar ? textOf(afterBar) : 'no bar'}`)
 console.log('ok bulk editing writes once per selected row and reports the result')
 
+// Search narrows the list, and select-all only takes what is on screen.
+const searchBox = find(tree, (node) => node.type === 'input'
+  && node.props && node.props.type === 'search')[0]
+if (!searchBox) throw new Error('search box missing')
+searchBox.props.onChange({ target: { value: 'router' } })
+tree = await settle()
+text = textOf(tree)
+if (!text.includes('router-skill')) throw new Error('search hid the matching skill')
+if (text.includes('quiet-skill')) throw new Error('search left a non-matching skill on screen')
+const selectAll = find(tree, (node) => node.type === 'button'
+  && node.children.some((child) => typeof child === 'string' && child === '全选'))[0]
+if (!selectAll) throw new Error('select-all button missing')
+selectAll.props.onClick()
+tree = await settle()
+const selectedCount = find(tree, (node) => node.props && node.props.className === 'dsc-bulk-count')[0]
+if (!selectedCount || !textOf(selectedCount).includes('1')) {
+  throw new Error(`select-all should only take the filtered row: ${selectedCount ? textOf(selectedCount) : 'no bar'}`)
+}
+searchBox.props.onChange({ target: { value: '' } })
+tree = await settle()
+if (!textOf(tree).includes('demo-skill')) throw new Error('clearing the search should restore the list')
+console.log('ok search narrows the list and select-all respects it')
+
 console.log('all page rendering and interaction checks passed')
